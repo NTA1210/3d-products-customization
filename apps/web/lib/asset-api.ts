@@ -1,9 +1,18 @@
+import { createClient } from '@supabase/supabase-js';
+
 export type AssetPipelineStatus = 'idle'|'requesting-upload'|'uploading'|'queued'|'processing'|'retrying'|'ready'|'failed';
 
-type ImportResponse={asset:{id:string};upload:{url:string;headers:Record<string,string>}};
+type ImportResponse={asset:{id:string};upload:{bucket:string;path:string;token:string;expiresInSeconds:number}};
 type JobResponse={id:string;status:string;failureReason?:string|null};
 
 const apiRoot=()=>`${(process.env.NEXT_PUBLIC_API_URL??'http://localhost:4000').replace(/\/$/,'')}/api`;
+
+function browserStorage(){
+  const url=process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if(!url||!key)throw new Error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are required for signed asset uploads.');
+  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+}
 
 async function expectJson<T>(response:Response):Promise<T>{
   if(!response.ok){const text=await response.text();throw new Error(text||`Request failed (${response.status})`);}
@@ -24,8 +33,10 @@ export async function startAssetPipeline(file:File,onStatus:(status:AssetPipelin
   }));
 
   onStatus('uploading');
-  const uploadResponse=await fetch(imported.upload.url,{method:'PUT',headers:imported.upload.headers,body:file,signal});
-  if(!uploadResponse.ok)throw new Error(`Object-storage upload failed (${uploadResponse.status}).`);
+  const {error:uploadError}=await browserStorage().storage
+    .from(imported.upload.bucket)
+    .uploadToSignedUrl(imported.upload.path,imported.upload.token,file,{contentType});
+  if(uploadError)throw new Error(`Supabase Storage upload failed: ${uploadError.message}`);
 
   onStatus('queued');
   const queued=await expectJson<{jobId:string;status:string}>(await fetch(`${apiRoot()}/assets/${imported.asset.id}/analyze`,{method:'POST',signal}));

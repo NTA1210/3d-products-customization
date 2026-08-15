@@ -5,7 +5,7 @@ Base URL: `/api`
 ## Asset pipeline
 
 ### `POST /assets/import`
-Creates a `ModelAsset` in `AWAITING_UPLOAD` state and returns a presigned S3-compatible `PUT` URL.
+Creates a `ModelAsset` in `AWAITING_UPLOAD` and returns a Supabase Storage signed-upload grant (`bucket`, `path`, `token`). The bucket is private; the browser uploads with `uploadToSignedUrl` using only the publishable key.
 
 Request:
 ```json
@@ -17,21 +17,21 @@ Request:
 }
 ```
 
-The response contains `asset` and `upload`. Upload the GLB bytes directly to `upload.url` with the returned headers. Phase 1 production upload accepts `.glb` only and caps declared size at 250 MB.
+Phase 1 accepts `.glb` as canonical editor input. `MAX_ASSET_BYTES` is configurable and defaults to 250 MB.
 
 ### `POST /assets/:id/analyze`
-Verifies the source object exists, creates a database `Job`, queues `validate-normalize` in BullMQ, and moves the asset to `QUEUED`.
+Checks that the source object exists in Supabase Storage, creates a persistent database `Job`, and queues `validate-normalize` in BullMQ.
 
-The background worker performs:
-`S3 download -> Khronos validation -> glTF Transform prune/dedup -> re-validation -> normalized GLB upload -> PostgreSQL status/result update`.
+Worker flow:
+`Supabase download -> Khronos validation -> glTF Transform prune/dedup -> re-validation -> Supabase normalized GLB upload -> PostgreSQL state/result update`.
 
 ### `GET /jobs/:id`
-Returns the persistent job state. Current states used by the asset pipeline are `QUEUED`, `PROCESSING`, `RETRYING`, `COMPLETED`, and `FAILED`.
+Persistent states: `QUEUED`, `PROCESSING`, `RETRYING`, `COMPLETED`, `FAILED`.
 
 ### `GET /assets/:id/download?kind=source|normalized`
-Returns a short-lived presigned download URL. `kind` defaults to `normalized`.
+Returns a short-lived signed URL for the private Supabase bucket.
 
-Other implemented persistence-backed routes:
+Other implemented routes:
 - `GET /health`
 - `GET /assets/:id`
 - `GET /assets/:id/manifest`
@@ -44,6 +44,6 @@ Other implemented persistence-backed routes:
 - `GET /materials`
 - `GET /materials/:id`
 
-Worker/provider routes that still return `501 Not Implemented`:
+Still intentionally unimplemented until their real provider/worker exists:
 - `POST /projects/:id/export`
 - `POST /projects/:id/manufacturability/check`

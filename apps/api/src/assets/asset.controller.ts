@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssetQueueService } from '../queue/asset-queue.service';
 import { StorageService } from '../storage/storage.service';
 
-const MAX_ASSET_BYTES = 250 * 1024 * 1024;
+const MAX_ASSET_BYTES = Number(process.env.MAX_ASSET_BYTES ?? 250 * 1024 * 1024);
 const ImportAssetSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   originalFilename: z.string().trim().min(1).max(255),
@@ -49,16 +49,8 @@ export class AssetController {
         status: 'AWAITING_UPLOAD',
       },
     });
-    const uploadUrl = await this.storage.createUploadUrl(sourceObjectKey, input.contentType);
-    return {
-      asset,
-      upload: {
-        method: 'PUT',
-        url: uploadUrl,
-        headers: { 'content-type': input.contentType },
-        expiresInSeconds: 900,
-      },
-    };
+    const upload = await this.storage.createUploadGrant(sourceObjectKey);
+    return { asset, upload };
   }
 
   @Get(':id')
@@ -76,7 +68,7 @@ export class AssetController {
     try {
       await this.storage.assertObjectExists(asset.sourceObjectKey);
     } catch {
-      throw new BadRequestException('Uploaded GLB was not found in object storage. Complete the signed PUT upload first.');
+      throw new BadRequestException('Uploaded GLB was not found in Supabase Storage. Complete the signed upload first.');
     }
 
     const databaseJob = await this.db.job.create({
