@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id         String      @id
-  email      String      @unique
-  assets     ModelAsset[]
-  projects   Project[]
-  presets    UserPreset[]
-  renderJobs RenderJob[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id                  String               @id
+  email               String               @unique
+  assets              ModelAsset[]
+  projects            Project[]
+  presets             UserPreset[]
+  renderJobs          RenderJob[]
+  aiRequests          AIRequest[]
+  manufacturingChecks ManufacturingCheck[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model ModelAsset {
@@ -57,17 +59,19 @@ model ModelManifest {
 }
 
 model Project {
-  id              String         @id @default(cuid())
-  userId          String
-  modelAssetId    String
-  name            String
-  activeVersionId String?
-  user            User           @relation(fields: [userId], references: [id])
-  modelAsset      ModelAsset     @relation(fields: [modelAssetId], references: [id])
-  versions        ModelVersion[]
-  renderJobs      RenderJob[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                  String               @id @default(cuid())
+  userId              String
+  modelAssetId        String
+  name                String
+  activeVersionId     String?
+  user                User                 @relation(fields: [userId], references: [id])
+  modelAsset          ModelAsset           @relation(fields: [modelAssetId], references: [id])
+  versions            ModelVersion[]
+  renderJobs          RenderJob[]
+  aiRequests          AIRequest[]
+  manufacturingChecks ManufacturingCheck[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([userId])
 }
@@ -130,6 +134,43 @@ model ManufacturingRule {
   severity String
   ruleJson Json
   active   Boolean @default(true)
+}
+
+model ManufacturingCheck {
+  id                String   @id @default(cuid())
+  userId            String
+  projectId         String
+  modelVersionId    String?
+  configurationJson Json
+  issuesJson        Json
+  geometryJson      Json?
+  status            String   @default("COMPLETED")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model AIRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  type      String
+  provider  String
+  model     String?
+  status    String
+  inputJson Json
+  resultJson Json?
+  error     String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([projectId])
 }
 
 model Job {
