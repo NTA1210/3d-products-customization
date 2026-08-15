@@ -1,0 +1,1 @@
+'use client';import {create} from 'zustand';export type AuthIdentity={id:string;email:string};type AuthState={ready:boolean;user?:AuthIdentity;setAuth:(user?:AuthIdentity)=>void;setReady:()=>void};export const useAuthStore=create<AuthState>(set=>({ready:false,setAuth:user=>set({user,ready:true}),setReady:()=>set({ready:true})}));

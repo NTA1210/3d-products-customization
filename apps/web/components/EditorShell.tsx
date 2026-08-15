@@ -1,6 +1,669 @@
 'use client';
-import {useMemo,useRef,useState} from 'react';import type {ComponentRole,DependencyRule,MaterialCategory,ScalingMode} from '@product3d/model-schema';import {ComponentRole as ComponentRoleSchema,DependencyRuleSchema,MaterialCategory as MaterialCategorySchema,ModelManifestSchema,ScalingMode as ScalingModeSchema} from '@product3d/model-schema';import {z} from 'zod';import ModelViewport from './ModelViewport';import StyleVariantTools from './StyleVariantTools';import {useEditorStore} from '../lib/store';import {demoMaterials} from '../lib/materials';import {loadAssetManifest,saveAssetManifest,startAssetPipeline,type AssetPipelineStatus} from '../lib/asset-api';
-const roles=ComponentRoleSchema.options as ComponentRole[],materialCategories=MaterialCategorySchema.options as MaterialCategory[],scalingModes=ScalingModeSchema.options as ScalingMode[];function downloadJson(name:string,value:unknown){const b=new Blob([JSON.stringify(value,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u)}
-function AssetPreparation(){const{manifest,analysis,assetId,configuration,selected,patchComponentDefinition,setRole,setDependencies,setPrepareVisibility,openEditor}=useEditorStore();const[saving,setSaving]=useState(false);if(!manifest)return <p className="muted">Preparing component manifest…</p>;const c=manifest.components.find(i=>i.id===selected);if(!c)return <p className="muted">Select a detected component candidate.</p>;const candidate=analysis?.componentCandidates.find(i=>i.id===c.id),cs=configuration?.components[c.id];const setAxis=(a:'x'|'y'|'z',checked:boolean)=>patchComponentDefinition(c.id,{editableAxes:{...c.editableAxes,[a]:checked},scalingMode:checked&&c.scalingMode==='FIXED'?'AXIS_SCALE':c.scalingMode});const setRange=(d:'width'|'height'|'depth',b:'min'|'max',raw:string)=>{const n={...(c.constraints[d]??{})};if(raw==='')delete n[b];else n[b]=Number(raw);patchComponentDefinition(c.id,{constraints:{...c.constraints,[d]:Object.keys(n).length?n:null}})};const toggleCategory=(cat:MaterialCategory,ch:boolean)=>{const cur=c.allowedMaterialCategories??[];patchComponentDefinition(c.id,{allowedMaterialCategories:ch?[...new Set([...cur,cat])]:cur.filter(i=>i!==cat)})};const save=async()=>{if(!assetId)return;setSaving(true);try{await saveAssetManifest(assetId,manifest);openEditor()}catch(e){useEditorStore.setState({error:e instanceof Error?e.message:'Could not save manifest.'})}finally{setSaving(false)}};return <><div className="eyebrow">Asset Preparation</div><label>Name</label><input value={c.name} onChange={e=>patchComponentDefinition(c.id,{name:e.target.value})}/><label>Role</label><select value={c.role} onChange={e=>setRole(c.id,e.target.value as ComponentRole)}>{roles.map(r=><option key={r}>{r}</option>)}</select><label>Scaling</label><select value={c.scalingMode} onChange={e=>patchComponentDefinition(c.id,{scalingMode:e.target.value as ScalingMode})}>{scalingModes.map(m=><option key={m}>{m}</option>)}</select><label className="check"><input type="checkbox" checked={c.editable} onChange={e=>patchComponentDefinition(c.id,{editable:e.target.checked})}/> Editable</label><label className="check"><input type="checkbox" checked={cs?.visible??true} onChange={e=>setPrepareVisibility(c.id,e.target.checked)}/> Visible</label><div className="field-group">{(['x','y','z'] as const).map(a=><label className="check inline" key={a}><input type="checkbox" disabled={!c.editable} checked={c.editableAxes[a]} onChange={e=>setAxis(a,e.target.checked)}/>{a.toUpperCase()}</label>)}</div>{(['width','height','depth'] as const).map(d=><div key={d}><label>{d} min/max mm</label><div className="row"><input type="number" value={c.constraints[d]?.min??''} onChange={e=>setRange(d,'min',e.target.value)}/><input type="number" value={c.constraints[d]?.max??''} onChange={e=>setRange(d,'max',e.target.value)}/></div></div>)}<label>Anchor IDs</label><input value={c.anchorIds.join(', ')} onChange={e=>patchComponentDefinition(c.id,{anchorIds:e.target.value.split(',').map(i=>i.trim()).filter(Boolean)})}/><label>Variant group</label><input value={c.variantGroupId??''} onChange={e=>patchComponentDefinition(c.id,{variantGroupId:e.target.value||undefined})}/><div className="field-group">{materialCategories.map(cat=><label className="check" key={cat}><input type="checkbox" checked={c.allowedMaterialCategories?.includes(cat)??false} onChange={e=>toggleCategory(cat,e.target.checked)}/>{cat}</label>)}</div>{candidate&&<div className="warning">{candidate.regionIds.length} geometry region(s). <button onClick={()=>patchComponentDefinition(c.id,{sourceRegionIds:candidate.regionIds})}>Map all</button></div>}<label>Dependencies JSON</label><textarea rows={5} defaultValue={JSON.stringify(manifest.dependencies,null,2)} onBlur={e=>{try{setDependencies(z.array(DependencyRuleSchema).parse(JSON.parse(e.target.value)) as DependencyRule[])}catch{useEditorStore.setState({error:'Dependency JSON is invalid.'})}}}/><button className="primary full" disabled={!assetId||saving} onClick={()=>void save()}>{saving?'Saving…':'Save Manifest & Open Editor'}</button></>}
-function Inspector(){const s=useEditorStore(),d=s.manifest?.components.find(i=>i.id===s.selected),state=s.selected?s.configuration?.components[s.selected]:undefined;if(!s.configuration)return <p className="muted">Upload a GLB model.</p>;if(!s.configuration.placement.locked)return <><div className="eyebrow">Placement</div><div className="segmented"><button className={s.placementMode==='translate'?'active':''} onClick={()=>s.setPlacementMode('translate')}>Move</button><button className={s.placementMode==='rotate'?'active':''} onClick={()=>s.setPlacementMode('rotate')}>Rotate</button></div><button className="primary full" onClick={s.toggleLock}>Lock placement</button></>;if(!d||!state)return <><StyleVariantTools/><p className="muted">Select a component.</p></>;const dimension=(axis:'WIDTH'|'HEIGHT'|'DEPTH',v:number)=>s.dispatch({type:'SET_DIMENSION',componentId:d.id,axis,valueMm:v,source:'MANUAL'},`Set ${axis.toLowerCase()}`);return <><StyleVariantTools/><div className="eyebrow">Inspector</div><h3>{d.name}</h3>{(['WIDTH','HEIGHT','DEPTH'] as const).map(axis=>{const key=axis.toLowerCase() as'width'|'height'|'depth',mapped=s.manifest!.axisMapping[key],enabled=d.editable&&d.editableAxes[mapped]&&d.scalingMode==='AXIS_SCALE';return <div key={axis}><label>{axis} (mm)</label><input type="number" disabled={!enabled} value={Math.round(state.dimensionsMm[key]*100)/100} onChange={e=>dimension(axis,Number(e.target.value))}/></div>})}<label>Material</label><select disabled={!d.editable} value={state.materialId??''} onChange={e=>e.target.value&&s.dispatch({type:'SET_MATERIAL',componentId:d.id,materialId:e.target.value,source:'MANUAL'},'Change material')}><option value="">Original</option>{demoMaterials.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select><label>Color</label><input disabled={!d.editable} type="color" value={state.color??'#b8895b'} onChange={e=>s.dispatch({type:'SET_COLOR',componentId:d.id,color:e.target.value,source:'MANUAL'},'Change color')}/><div className="row"><button onClick={()=>s.dispatch({type:'RESET_COMPONENT',componentId:d.id,source:'MANUAL'},'Reset component')}>Reset</button><button onClick={s.toggleLock}>Unlock</button></div></>}
-export default function EditorShell(){const s=useEditorStore(),[pipeline,setPipeline]=useState<AssetPipelineStatus>('idle'),abort=useRef<AbortController|null>(null),selected=s.manifest?.components.find(i=>i.id===s.selected),canUndo=s.undoStack.length>0,canRedo=s.redoStack.length>0,status=useMemo(()=>s.phase==='EMPTY'?'No asset':s.phase==='PREPARE'?'Asset Preparation':s.configuration?.placement.locked?'Locked · Customize':'Unlocked · Place',[s.phase,s.configuration?.placement.locked]);const upload=async(file?:File)=>{if(!file)return;if(!file.name.toLowerCase().endsWith('.glb')){useEditorStore.setState({error:'Phase 1 accepts GLB.'});return}abort.current?.abort();abort.current=new AbortController();if(s.assetUrl)URL.revokeObjectURL(s.assetUrl);s.setUploadedAsset(file.name,URL.createObjectURL(file));try{const r=await startAssetPipeline(file,setPipeline,abort.current.signal);s.setAssetAnalysis(r.assetId,r.analysis)}catch(e){if(e instanceof DOMException&&e.name==='AbortError')return;setPipeline('failed');useEditorStore.setState({error:e instanceof Error?e.message:'Asset pipeline failed.'})}};const importManifest=async(file?:File)=>{if(!file)return;try{s.replaceManifest(ModelManifestSchema.parse(JSON.parse(await file.text())))}catch(e){useEditorStore.setState({error:e instanceof Error?e.message:'Invalid manifest.'})}};const reload=async()=>{if(!s.assetId)return;try{s.replaceManifest(await loadAssetManifest(s.assetId))}catch(e){useEditorStore.setState({error:e instanceof Error?e.message:'Could not reload.'})}};return <div className="shell"><header className="top"><strong>3D Product Configurator</strong><div className="top-actions"><label className="upload">Import GLB<input type="file" accept=".glb" onChange={e=>void upload(e.target.files?.[0])}/></label>{s.phase==='PREPARE'&&<label className="upload">Import Manifest<input type="file" accept=".json" onChange={e=>void importManifest(e.target.files?.[0])}/></label>}<button disabled={!s.assetId} onClick={()=>void reload()}>Reload Manifest</button><button disabled={!canUndo} onClick={s.undo}>Undo</button><button disabled={!canRedo} onClick={s.redo}>Redo</button><button disabled={!s.configuration} onClick={()=>s.configuration&&downloadJson(`${s.assetName??'product'}.configuration.json`,{manifest:s.manifest,configuration:s.configuration})}>Save Configuration</button></div></header><div className="layout"><aside className="panel"><div className="eyebrow">Components</div>{s.analysis?.warnings.slice(0,3).map(w=><div className="warning" key={w.code+w.sourceId}>{w.message}</div>)}{s.manifest?.components.map(c=><button key={c.id} className={`component-card ${s.selected===c.id?'active':''}`} onClick={()=>s.select(c.id)}><span>{c.name}</span><small>{c.role} · {c.editable?'editable':'fixed'}</small></button>)}</aside><main className="viewer"><ModelViewport/></main><aside className="panel right">{s.phase==='PREPARE'?<AssetPreparation/>:<Inspector/>}{s.error&&<div className="error" onClick={s.clearError}>{s.error}</div>}{selected&&<p className="source-id">{selected.sourceNodeIds[0]} / {selected.sourceMeshIds[0]}</p>}</aside></div><footer className="status"><span className={`dot ${s.configuration?.placement.locked?'ok':''}`}/>{status}<span>Asset: {pipeline}</span>{s.configuration?.appliedStyleId&&<span>Style: {s.configuration.appliedStyleId}</span>}<span>mm</span></footer></div>}
+
+import { useMemo, useRef, useState } from 'react';
+import type {
+  ComponentRole,
+  DependencyRule,
+  MaterialCategory,
+  ScalingMode,
+} from '@product3d/model-schema';
+import {
+  ComponentRole as ComponentRoleSchema,
+  DependencyRuleSchema,
+  MaterialCategory as MaterialCategorySchema,
+  ModelManifestSchema,
+  ScalingMode as ScalingModeSchema,
+} from '@product3d/model-schema';
+import { fromMm, toMm, type LengthUnit } from '@product3d/constraint-engine';
+import { z } from 'zod';
+import AuthPanel from './AuthPanel';
+import ModelViewport from './ModelViewport';
+import StyleVariantTools from './StyleVariantTools';
+import WorkspaceControls from './WorkspaceControls';
+import { useAuthStore } from '../lib/auth-store';
+import { useEditorStore } from '../lib/store';
+import { demoMaterials } from '../lib/materials';
+import {
+  loadAssetManifest,
+  saveAssetManifest,
+  startAssetPipeline,
+  type AssetPipelineStatus,
+} from '../lib/asset-api';
+
+const roles = ComponentRoleSchema.options as ComponentRole[];
+const materialCategories = MaterialCategorySchema.options as MaterialCategory[];
+const scalingModes = ScalingModeSchema.options as ScalingMode[];
+
+function downloadJson(name: string, value: unknown) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function AssetPreparation() {
+  const {
+    manifest,
+    analysis,
+    assetId,
+    configuration,
+    selected,
+    patchComponentDefinition,
+    setRole,
+    setDependencies,
+    setPrepareVisibility,
+    openEditor,
+  } = useEditorStore();
+  const [saving, setSaving] = useState(false);
+
+  if (!manifest) return <p className="muted">Preparing manifest…</p>;
+  const component = manifest.components.find((item) => item.id === selected);
+  if (!component) return <p className="muted">Select a component candidate.</p>;
+
+  const candidate = analysis?.componentCandidates.find((item) => item.id === component.id);
+  const componentState = configuration?.components[component.id];
+
+  const setAxis = (axis: 'x' | 'y' | 'z', checked: boolean) => {
+    patchComponentDefinition(component.id, {
+      editableAxes: { ...component.editableAxes, [axis]: checked },
+      scalingMode:
+        checked && component.scalingMode === 'FIXED' ? 'AXIS_SCALE' : component.scalingMode,
+    });
+  };
+
+  const setRange = (
+    dimension: 'width' | 'height' | 'depth',
+    bound: 'min' | 'max',
+    raw: string,
+  ) => {
+    const next = { ...(component.constraints[dimension] ?? {}) };
+    if (raw === '') delete next[bound];
+    else next[bound] = Number(raw);
+    patchComponentDefinition(component.id, {
+      constraints: {
+        ...component.constraints,
+        [dimension]: Object.keys(next).length ? next : null,
+      },
+    });
+  };
+
+  const toggleCategory = (category: MaterialCategory, checked: boolean) => {
+    const current = component.allowedMaterialCategories ?? [];
+    patchComponentDefinition(component.id, {
+      allowedMaterialCategories: checked
+        ? [...new Set([...current, category])]
+        : current.filter((item) => item !== category),
+    });
+  };
+
+  const save = async () => {
+    if (!assetId) return;
+    setSaving(true);
+    try {
+      await saveAssetManifest(assetId, manifest);
+      openEditor();
+    } catch (error) {
+      useEditorStore.setState({
+        error: error instanceof Error ? error.message : 'Could not save manifest.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="eyebrow">Asset Preparation</div>
+      <label>Name</label>
+      <input
+        value={component.name}
+        onChange={(event) => patchComponentDefinition(component.id, { name: event.target.value })}
+      />
+
+      <label>Role</label>
+      <select
+        value={component.role}
+        onChange={(event) => setRole(component.id, event.target.value as ComponentRole)}
+      >
+        {roles.map((role) => (
+          <option key={role}>{role}</option>
+        ))}
+      </select>
+
+      <label>Scaling</label>
+      <select
+        value={component.scalingMode}
+        onChange={(event) =>
+          patchComponentDefinition(component.id, { scalingMode: event.target.value as ScalingMode })
+        }
+      >
+        {scalingModes.map((mode) => (
+          <option key={mode}>{mode}</option>
+        ))}
+      </select>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={component.editable}
+          onChange={(event) =>
+            patchComponentDefinition(component.id, { editable: event.target.checked })
+          }
+        />
+        Editable
+      </label>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={componentState?.visible ?? true}
+          onChange={(event) => setPrepareVisibility(component.id, event.target.checked)}
+        />
+        Visible
+      </label>
+
+      <div className="field-group">
+        {(['x', 'y', 'z'] as const).map((axis) => (
+          <label className="check inline" key={axis}>
+            <input
+              type="checkbox"
+              disabled={!component.editable}
+              checked={component.editableAxes[axis]}
+              onChange={(event) => setAxis(axis, event.target.checked)}
+            />
+            {axis.toUpperCase()}
+          </label>
+        ))}
+      </div>
+
+      {(['width', 'height', 'depth'] as const).map((dimension) => (
+        <div key={dimension}>
+          <label>{dimension} min/max mm</label>
+          <div className="row">
+            <input
+              type="number"
+              value={component.constraints[dimension]?.min ?? ''}
+              onChange={(event) => setRange(dimension, 'min', event.target.value)}
+            />
+            <input
+              type="number"
+              value={component.constraints[dimension]?.max ?? ''}
+              onChange={(event) => setRange(dimension, 'max', event.target.value)}
+            />
+          </div>
+        </div>
+      ))}
+
+      <label>Anchor IDs</label>
+      <input
+        value={component.anchorIds.join(', ')}
+        onChange={(event) =>
+          patchComponentDefinition(component.id, {
+            anchorIds: event.target.value
+              .split(',')
+              .map((item) => item.trim())
+              .filter(Boolean),
+          })
+        }
+      />
+
+      <label>Variant group</label>
+      <input
+        value={component.variantGroupId ?? ''}
+        onChange={(event) =>
+          patchComponentDefinition(component.id, {
+            variantGroupId: event.target.value || undefined,
+          })
+        }
+      />
+
+      <div className="field-group">
+        {materialCategories.map((category) => (
+          <label className="check" key={category}>
+            <input
+              type="checkbox"
+              checked={component.allowedMaterialCategories?.includes(category) ?? false}
+              onChange={(event) => toggleCategory(category, event.target.checked)}
+            />
+            {category}
+          </label>
+        ))}
+      </div>
+
+      {candidate && (
+        <div className="warning">
+          {candidate.regionIds.length} geometry region(s).{' '}
+          <button
+            onClick={() =>
+              patchComponentDefinition(component.id, { sourceRegionIds: candidate.regionIds })
+            }
+          >
+            Map all
+          </button>
+        </div>
+      )}
+
+      <label>Dependencies JSON</label>
+      <textarea
+        rows={5}
+        defaultValue={JSON.stringify(manifest.dependencies, null, 2)}
+        onBlur={(event) => {
+          try {
+            setDependencies(
+              z.array(DependencyRuleSchema).parse(JSON.parse(event.target.value)) as DependencyRule[],
+            );
+          } catch {
+            useEditorStore.setState({ error: 'Dependency JSON is invalid.' });
+          }
+        }}
+      />
+
+      <button className="primary full" disabled={!assetId || saving} onClick={() => void save()}>
+        {saving ? 'Saving…' : 'Save Manifest & Open Editor'}
+      </button>
+    </>
+  );
+}
+
+function Inspector() {
+  const store = useEditorStore();
+  const [unit, setUnit] = useState<LengthUnit>('mm');
+  const definition = store.manifest?.components.find((item) => item.id === store.selected);
+  const state = store.selected ? store.configuration?.components[store.selected] : undefined;
+
+  if (!store.configuration) return <p className="muted">Upload a GLB model.</p>;
+
+  if (!store.configuration.placement.locked) {
+    return (
+      <>
+        <div className="eyebrow">Placement</div>
+        <div className="segmented">
+          <button
+            className={store.placementMode === 'translate' ? 'active' : ''}
+            onClick={() => store.setPlacementMode('translate')}
+          >
+            Move
+          </button>
+          <button
+            className={store.placementMode === 'rotate' ? 'active' : ''}
+            onClick={() => store.setPlacementMode('rotate')}
+          >
+            Rotate
+          </button>
+        </div>
+        <button className="primary full" onClick={store.toggleLock}>
+          Lock placement
+        </button>
+      </>
+    );
+  }
+
+  if (!definition || !state) {
+    return (
+      <>
+        <StyleVariantTools />
+        <p className="muted">Select a component.</p>
+      </>
+    );
+  }
+
+  const dimension = (axis: 'WIDTH' | 'HEIGHT' | 'DEPTH', value: number) =>
+    store.dispatch(
+      {
+        type: 'SET_DIMENSION',
+        componentId: definition.id,
+        axis,
+        valueMm: toMm(value, unit),
+        source: 'MANUAL',
+      },
+      `Set ${axis.toLowerCase()}`,
+    );
+
+  return (
+    <>
+      <StyleVariantTools />
+      <div className="row">
+        <div className="eyebrow">Inspector</div>
+        <select value={unit} onChange={(event) => setUnit(event.target.value as LengthUnit)}>
+          <option value="mm">mm</option>
+          <option value="cm">cm</option>
+          <option value="inch">inch</option>
+        </select>
+      </div>
+      <h3>{definition.name}</h3>
+
+      {(['WIDTH', 'HEIGHT', 'DEPTH'] as const).map((axis) => {
+        const key = axis.toLowerCase() as 'width' | 'height' | 'depth';
+        const mapped = store.manifest!.axisMapping[key];
+        const enabled =
+          definition.editable &&
+          definition.editableAxes[mapped] &&
+          definition.scalingMode === 'AXIS_SCALE';
+        return (
+          <div key={axis}>
+            <label>
+              {axis} ({unit})
+            </label>
+            <input
+              type="number"
+              disabled={!enabled}
+              value={Math.round(fromMm(state.dimensionsMm[key], unit) * 1000) / 1000}
+              onChange={(event) => dimension(axis, Number(event.target.value))}
+            />
+          </div>
+        );
+      })}
+
+      <div className="field-group">
+        <span className="muted">Position ({unit})</span>
+        {(['X', 'Y', 'Z'] as const).map((axis, index) => (
+          <div key={axis}>
+            <label>{axis}</label>
+            <input
+              type="number"
+              disabled={!definition.editable}
+              value={Math.round(fromMm(state.transform.position[index], unit) * 1000) / 1000}
+              onChange={(event) =>
+                store.dispatch(
+                  {
+                    type: 'SET_POSITION',
+                    componentId: definition.id,
+                    axis,
+                    value: toMm(Number(event.target.value), unit),
+                    source: 'MANUAL',
+                  },
+                  `Move ${axis}`,
+                )
+              }
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="field-group">
+        <span className="muted">Rotation (degrees)</span>
+        {(['X', 'Y', 'Z'] as const).map((axis, index) => (
+          <div key={axis}>
+            <label>{axis}</label>
+            <input
+              type="number"
+              disabled={!definition.editable}
+              value={Math.round((state.transform.rotation[index] * 180 * 100) / Math.PI) / 100}
+              onChange={(event) =>
+                store.dispatch(
+                  {
+                    type: 'SET_ROTATION',
+                    componentId: definition.id,
+                    axis,
+                    value: (Number(event.target.value) * Math.PI) / 180,
+                    source: 'MANUAL',
+                  },
+                  `Rotate ${axis}`,
+                )
+              }
+            />
+          </div>
+        ))}
+      </div>
+
+      <label>Material</label>
+      <select
+        disabled={!definition.editable}
+        value={state.materialId ?? ''}
+        onChange={(event) =>
+          event.target.value &&
+          store.dispatch(
+            {
+              type: 'SET_MATERIAL',
+              componentId: definition.id,
+              materialId: event.target.value,
+              source: 'MANUAL',
+            },
+            'Change material',
+          )
+        }
+      >
+        <option value="">Original</option>
+        {demoMaterials.map((material) => (
+          <option key={material.id} value={material.id}>
+            {material.name}
+          </option>
+        ))}
+      </select>
+
+      <label>Color</label>
+      <input
+        disabled={!definition.editable}
+        type="color"
+        value={state.color ?? '#b8895b'}
+        onChange={(event) =>
+          store.dispatch(
+            {
+              type: 'SET_COLOR',
+              componentId: definition.id,
+              color: event.target.value,
+              source: 'MANUAL',
+            },
+            'Change color',
+          )
+        }
+      />
+
+      <div className="row">
+        <button
+          onClick={() =>
+            store.dispatch(
+              { type: 'RESET_COMPONENT', componentId: definition.id, source: 'MANUAL' },
+              'Reset component',
+            )
+          }
+        >
+          Reset
+        </button>
+        {state.deleted ? (
+          <button
+            onClick={() =>
+              store.dispatch(
+                { type: 'RESTORE_COMPONENT', componentId: definition.id, source: 'MANUAL' },
+                'Restore component',
+              )
+            }
+          >
+            Restore
+          </button>
+        ) : (
+          <button
+            onClick={() =>
+              store.dispatch(
+                { type: 'DELETE_COMPONENT', componentId: definition.id, source: 'MANUAL' },
+                'Delete component',
+              )
+            }
+          >
+            Delete
+          </button>
+        )}
+        <button onClick={store.toggleLock}>Unlock</button>
+      </div>
+    </>
+  );
+}
+
+export default function EditorShell() {
+  const store = useEditorStore();
+  const auth = useAuthStore();
+  const [pipeline, setPipeline] = useState<AssetPipelineStatus>('idle');
+  const abort = useRef<AbortController | null>(null);
+  const selected = store.manifest?.components.find((item) => item.id === store.selected);
+  const canUndo = store.undoStack.length > 0;
+  const canRedo = store.redoStack.length > 0;
+  const status = useMemo(
+    () =>
+      store.phase === 'EMPTY'
+        ? 'No asset'
+        : store.phase === 'PREPARE'
+          ? 'Asset Preparation'
+          : store.configuration?.placement.locked
+            ? 'Locked · Customize'
+            : 'Unlocked · Place',
+    [store.phase, store.configuration?.placement.locked],
+  );
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    if (!auth.user) {
+      useEditorStore.setState({ error: 'Sign in before importing an asset.' });
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.glb')) {
+      useEditorStore.setState({ error: 'Phase 1 accepts GLB.' });
+      return;
+    }
+    abort.current?.abort();
+    abort.current = new AbortController();
+    if (store.assetUrl?.startsWith('blob:')) URL.revokeObjectURL(store.assetUrl);
+    store.setUploadedAsset(file.name, URL.createObjectURL(file));
+    try {
+      const result = await startAssetPipeline(file, setPipeline, abort.current.signal);
+      store.setAssetAnalysis(result.assetId, result.analysis);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setPipeline('failed');
+      useEditorStore.setState({
+        error: error instanceof Error ? error.message : 'Asset pipeline failed.',
+      });
+    }
+  };
+
+  const importManifest = async (file?: File) => {
+    if (!file) return;
+    try {
+      store.replaceManifest(ModelManifestSchema.parse(JSON.parse(await file.text())));
+    } catch (error) {
+      useEditorStore.setState({
+        error: error instanceof Error ? error.message : 'Invalid manifest.',
+      });
+    }
+  };
+
+  const reloadManifest = async () => {
+    if (!store.assetId) return;
+    try {
+      store.replaceManifest(await loadAssetManifest(store.assetId));
+    } catch (error) {
+      useEditorStore.setState({
+        error: error instanceof Error ? error.message : 'Could not reload.',
+      });
+    }
+  };
+
+  return (
+    <div className="shell">
+      <header className="top">
+        <div>
+          <strong>3D Product Configurator</strong>
+          <AuthPanel />
+        </div>
+        <div className="top-actions">
+          <WorkspaceControls />
+          <label className="upload">
+            Import GLB
+            <input
+              disabled={!auth.user}
+              type="file"
+              accept=".glb"
+              onChange={(event) => void upload(event.target.files?.[0])}
+            />
+          </label>
+          {store.phase === 'PREPARE' && (
+            <label className="upload">
+              Import Manifest
+              <input
+                type="file"
+                accept=".json"
+                onChange={(event) => void importManifest(event.target.files?.[0])}
+              />
+            </label>
+          )}
+          <button disabled={!store.assetId} onClick={() => void reloadManifest()}>
+            Reload Manifest
+          </button>
+          <button disabled={!canUndo} onClick={store.undo}>
+            Undo
+          </button>
+          <button disabled={!canRedo} onClick={store.redo}>
+            Redo
+          </button>
+          <button
+            disabled={!store.configuration}
+            onClick={() =>
+              store.configuration &&
+              downloadJson(`${store.assetName ?? 'product'}.configuration.json`, {
+                manifest: store.manifest,
+                configuration: store.configuration,
+              })
+            }
+          >
+            Configuration JSON
+          </button>
+        </div>
+      </header>
+
+      <div className="layout">
+        <aside className="panel">
+          <div className="eyebrow">Components</div>
+          {store.analysis?.warnings.slice(0, 3).map((warning) => (
+            <div className="warning" key={warning.code + warning.sourceId}>
+              {warning.message}
+            </div>
+          ))}
+          {store.manifest?.components.map((component) => (
+            <button
+              key={component.id}
+              className={`component-card ${store.selected === component.id ? 'active' : ''}`}
+              onClick={() => store.select(component.id)}
+            >
+              <span>{component.name}</span>
+              <small>
+                {component.role} · {component.editable ? 'editable' : 'fixed'}
+                {store.configuration?.components[component.id]?.deleted ? ' · deleted' : ''}
+              </small>
+            </button>
+          ))}
+        </aside>
+
+        <main className="viewer">
+          <ModelViewport />
+        </main>
+
+        <aside className="panel right">
+          {store.phase === 'PREPARE' ? <AssetPreparation /> : <Inspector />}
+          {store.error && (
+            <div className="error" onClick={store.clearError}>
+              {store.error}
+            </div>
+          )}
+          {selected && (
+            <p className="source-id">
+              {selected.sourceNodeIds[0]} / {selected.sourceMeshIds[0]}
+            </p>
+          )}
+        </aside>
+      </div>
+
+      <footer className="status">
+        <span className={`dot ${store.configuration?.placement.locked ? 'ok' : ''}`} />
+        {status}
+        <span>Asset: {pipeline}</span>
+        {store.projectId && <span>Project: {store.projectId.slice(0, 8)}</span>}
+        {store.configuration?.appliedStyleId && (
+          <span>Style: {store.configuration.appliedStyleId}</span>
+        )}
+        <span>Canonical: mm</span>
+      </footer>
+    </div>
+  );
+}
