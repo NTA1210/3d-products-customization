@@ -1,6 +1,6 @@
 'use client';
 import {create} from 'zustand';
-import type { ComponentManifest,ComponentRole,ModelConfiguration,ModelManifest,TransformState } from '@product3d/model-schema';
+import type { AssetAnalysis,ComponentManifest,ComponentRole,ModelConfiguration,ModelManifest,TransformState } from '@product3d/model-schema';
 import type { EditorAction } from '@product3d/action-engine';
 import {applyAction} from '@product3d/editor-core';
 import {demoMaterials} from './materials';
@@ -10,9 +10,10 @@ type PlacementMode='translate'|'rotate';
 type Snapshot={configuration:ModelConfiguration;label:string};
 
 type EditorStore={
-  phase:Phase;assetName?:string;assetUrl?:string;selected?:string;manifest?:ModelManifest;configuration?:ModelConfiguration;
+  phase:Phase;assetName?:string;assetUrl?:string;assetId?:string;analysis?:AssetAnalysis;selected?:string;manifest?:ModelManifest;configuration?:ModelConfiguration;
   placementMode:PlacementMode;undoStack:Snapshot[];redoStack:Snapshot[];error?:string;
   setUploadedAsset:(assetName:string,assetUrl:string)=>void;
+  setAssetAnalysis:(assetId:string,analysis:AssetAnalysis)=>void;
   setPreparedAsset:(manifest:ModelManifest,configuration:ModelConfiguration)=>void;
   select:(id?:string)=>void;
   patchComponentDefinition:(id:string,patch:Partial<ComponentManifest>)=>void;
@@ -27,7 +28,8 @@ type EditorStore={
 
 export const useEditorStore=create<EditorStore>((set,get)=>({
   phase:'EMPTY',placementMode:'translate',undoStack:[],redoStack:[],
-  setUploadedAsset:(assetName,assetUrl)=>set({phase:'PREPARE',assetName,assetUrl,selected:undefined,manifest:undefined,configuration:undefined,undoStack:[],redoStack:[],error:undefined}),
+  setUploadedAsset:(assetName,assetUrl)=>set({phase:'PREPARE',assetName,assetUrl,assetId:undefined,analysis:undefined,selected:undefined,manifest:undefined,configuration:undefined,undoStack:[],redoStack:[],error:undefined}),
+  setAssetAnalysis:(assetId,analysis)=>set({assetId,analysis}),
   setPreparedAsset:(manifest,configuration)=>set(state=>state.manifest?{}:{manifest,configuration,selected:manifest.components[0]?.id}),
   select:selected=>set({selected}),
   patchComponentDefinition:(id,patch)=>set(state=>!state.manifest?{}:{manifest:{...state.manifest,components:state.manifest.components.map(item=>item.id===id?{...item,...patch}:item)}}),
@@ -36,15 +38,9 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
   toggleLock:()=>set(state=>!state.configuration?{}:{configuration:{...state.configuration,placement:{...state.configuration.placement,locked:!state.configuration.placement.locked}},error:undefined}),
   setPlacementMode:placementMode=>set({placementMode}),
   setPlacementTransform:transform=>set(state=>!state.configuration?{}:{configuration:{...state.configuration,placement:{...state.configuration.placement,transform}}}),
-  dispatch:(action,label)=>{
-    const state=get(); if(!state.manifest||!state.configuration)return false;
-    const before=structuredClone(state.configuration);
-    const result=applyAction(action,state.manifest,state.configuration,{materials:demoMaterials});
-    if(!result.ok){set({error:result.message});return false;}
-    set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label:label??action.type}],redoStack:[],error:undefined});return true;
-  },
+  dispatch:(action,label)=>{const state=get();if(!state.manifest||!state.configuration)return false;const before=structuredClone(state.configuration);const result=applyAction(action,state.manifest,state.configuration,{materials:demoMaterials});if(!result.ok){set({error:result.message});return false;}set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label:label??action.type}],redoStack:[],error:undefined});return true;},
   undo:()=>set(state=>{if(!state.configuration||!state.undoStack.length)return{};const previous=state.undoStack[state.undoStack.length-1];return{configuration:structuredClone(previous.configuration),undoStack:state.undoStack.slice(0,-1),redoStack:[...state.redoStack,{configuration:structuredClone(state.configuration),label:previous.label}],error:undefined};}),
   redo:()=>set(state=>{if(!state.configuration||!state.redoStack.length)return{};const next=state.redoStack[state.redoStack.length-1];return{configuration:structuredClone(next.configuration),redoStack:state.redoStack.slice(0,-1),undoStack:[...state.undoStack,{configuration:structuredClone(state.configuration),label:next.label}],error:undefined};}),
   clearError:()=>set({error:undefined}),
-  reset:()=>set({phase:'EMPTY',assetName:undefined,assetUrl:undefined,selected:undefined,manifest:undefined,configuration:undefined,placementMode:'translate',undoStack:[],redoStack:[],error:undefined})
+  reset:()=>set({phase:'EMPTY',assetName:undefined,assetUrl:undefined,assetId:undefined,analysis:undefined,selected:undefined,manifest:undefined,configuration:undefined,placementMode:'translate',undoStack:[],redoStack:[],error:undefined})
 }));
