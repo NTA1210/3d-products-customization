@@ -5,6 +5,7 @@ import {AssetController} from './assets/asset.controller';
 import {AuthController} from './auth/auth.controller';
 import {SupabaseAuthGuard} from './auth/auth.service';
 import {CatalogController} from './catalog/catalog.controller';
+import {CollectionController} from './collection/collection.controller';
 import {JobController} from './jobs/job.controller';
 import {ManufacturingController} from './manufacturing/manufacturing.controller';
 import {PrismaService} from './prisma/prisma.service';
@@ -16,6 +17,7 @@ import {GeometryQueueService} from './queue/geometry-queue.service';
 import {RenderQueueService} from './queue/render-queue.service';
 import {RenderController} from './render/render.controller';
 import {StorageService} from './storage/storage.service';
+import {WorkshopController} from './workshop/workshop.controller';
 
 @Controller('health')
 class HealthController{@Get()health(){return{ok:true,service:'product3d-api'}}}
@@ -27,7 +29,7 @@ class MaterialController{
 }
 
 @Module({
-  controllers:[HealthController,AuthController,AssetController,CatalogController,JobController,ProjectController,MaterialController,RenderController,AiController,ManufacturingController],
+  controllers:[HealthController,AuthController,AssetController,CatalogController,CollectionController,JobController,ProjectController,MaterialController,RenderController,AiController,ManufacturingController,WorkshopController],
   providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,GeometryQueueService,AiVisualizationQueueService,SupabaseAuthGuard,AiProviderService],
 })
 export class AppModule{}

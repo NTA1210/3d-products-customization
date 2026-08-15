@@ -16,6 +16,7 @@ model User {
   renderJobs          RenderJob[]
   aiRequests          AIRequest[]
   manufacturingChecks ManufacturingCheck[]
+  quoteRequests       QuoteRequest[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -70,6 +71,7 @@ model Project {
   renderJobs          RenderJob[]
   aiRequests          AIRequest[]
   manufacturingChecks ManufacturingCheck[]
+  quoteRequests       QuoteRequest[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -77,13 +79,14 @@ model Project {
 }
 
 model ModelVersion {
-  id                String   @id @default(cuid())
+  id                String         @id @default(cuid())
   projectId         String
   name              String
   configurationJson Json
   previewUrl        String?
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt         DateTime @default(now())
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quoteRequests     QuoteRequest[]
+  createdAt         DateTime       @default(now())
 }
 
 model MaterialPreset {
@@ -197,12 +200,80 @@ model RenderJob {
   mode              String
   quality           String
   frameCount        Int
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   @@index([userId])
   @@index([projectId])
+}
+
+model CollectionProduct {
+  id                String   @id
+  name              String
+  category          String
+  styleTags         String[]
+  materialTags      String[]
+  colorFamily       String?
+  componentFeatures String[]
+  thumbnailUrl      String?
+  metadataJson      Json
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+}
+
+model Workshop {
+  id               String         @id
+  name             String
+  contactJson      Json
+  capabilitiesJson Json
+  active           Boolean        @default(true)
+  quoteRequests    QuoteRequest[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model QuoteRequest {
+  id             String       @id @default(cuid())
+  userId         String
+  projectId      String
+  modelVersionId String
+  workshopId     String?
+  status         String       @default("DRAFT")
+  customerNote   String?
+  payloadJson    Json
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  modelVersion   ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  workshop       Workshop?    @relation(fields: [workshopId], references: [id], onDelete: SetNull)
+  quotes         Quote[]
+  submittedAt    DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([workshopId])
+}
+
+model Quote {
+  id             String       @id @default(cuid())
+  quoteRequestId String
+  status         String       @default("RECEIVED")
+  amountCents    Int?
+  currency       String       @default("USD")
+  leadTimeDays   Int?
+  terms          String?
+  responseJson   Json?
+  quoteRequest   QuoteRequest @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([quoteRequestId])
 }
