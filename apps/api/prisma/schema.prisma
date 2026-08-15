@@ -15,17 +15,24 @@ model User {
 }
 
 model ModelAsset {
-  id                String          @id @default(cuid())
-  name              String
-  originalFilename  String
-  sourceUrl         String?
-  normalizedGlbUrl  String?
-  thumbnailUrl      String?
-  status            String          @default("UPLOADED")
-  unit              String          @default("mm")
-  manifests         ModelManifest[]
-  projects          Project[]
-  createdAt         DateTime        @default(now())
+  id                  String          @id @default(cuid())
+  name                String
+  originalFilename    String
+  contentType         String?
+  sizeBytes           Int?
+  sourceUrl           String?
+  sourceObjectKey     String?
+  normalizedGlbUrl    String?
+  normalizedObjectKey String?
+  thumbnailUrl        String?
+  validationJson      Json?
+  status              String          @default("AWAITING_UPLOAD")
+  unit                String          @default("mm")
+  manifests           ModelManifest[]
+  projects            Project[]
+  jobs                Job[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 }
 
 model ModelManifest {
@@ -91,11 +98,15 @@ model ManufacturingRule {
 }
 
 model Job {
-  id        String   @id @default(cuid())
-  type      String
-  status    String
-  payload   Json
-  result    Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String      @id @default(cuid())
+  type          String
+  status        String
+  payload       Json
+  result        Json?
+  failureReason String?
+  bullmqJobId   String?     @unique
+  modelAssetId  String?
+  modelAsset    ModelAsset? @relation(fields: [modelAssetId], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }

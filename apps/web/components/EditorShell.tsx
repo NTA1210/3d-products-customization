@@ -1,10 +1,11 @@
 'use client';
-import {useMemo} from 'react';
+import {useMemo,useRef,useState} from 'react';
 import type {ComponentRole} from '@product3d/model-schema';
 import {ComponentRole as ComponentRoleSchema} from '@product3d/model-schema';
 import ModelViewport from './ModelViewport';
 import {useEditorStore} from '../lib/store';
 import {demoMaterials} from '../lib/materials';
+import {startAssetPipeline,type AssetPipelineStatus} from '../lib/asset-api';
 
 const roles=ComponentRoleSchema.options as ComponentRole[];
 
@@ -40,16 +41,18 @@ function Inspector(){
 
 export default function EditorShell(){
   const store=useEditorStore();
+  const [pipelineStatus,setPipelineStatus]=useState<AssetPipelineStatus>('idle');
+  const pipelineAbort=useRef<AbortController|null>(null);
   const selectedDefinition=store.manifest?.components.find(item=>item.id===store.selected);
   const canUndo=store.undoStack.length>0,canRedo=store.redoStack.length>0;
   const status=useMemo(()=>store.phase==='EMPTY'?'No asset loaded':store.phase==='PREPARE'?'Asset Preparation':store.configuration?.placement.locked?'Placement Locked · Customization Enabled':'Placement Unlocked · Placement Mode',[store.phase,store.configuration?.placement.locked]);
-  const upload=(file?:File)=>{if(!file)return;if(!file.name.toLowerCase().endsWith('.glb')){useEditorStore.setState({error:'Phase 1 accepts GLB as the canonical editor input.'});return;}if(store.assetUrl)URL.revokeObjectURL(store.assetUrl);store.setUploadedAsset(file.name,URL.createObjectURL(file));};
+  const upload=async(file?:File)=>{if(!file)return;if(!file.name.toLowerCase().endsWith('.glb')){useEditorStore.setState({error:'Phase 1 accepts GLB as the canonical editor input.'});return;}pipelineAbort.current?.abort();pipelineAbort.current=new AbortController();if(store.assetUrl)URL.revokeObjectURL(store.assetUrl);store.setUploadedAsset(file.name,URL.createObjectURL(file));try{await startAssetPipeline(file,setPipelineStatus,pipelineAbort.current.signal);}catch(error){if(error instanceof DOMException&&error.name==='AbortError')return;setPipelineStatus('failed');useEditorStore.setState({error:error instanceof Error?error.message:'Asset pipeline failed.'});}};
   const exportConfiguration=()=>{if(!store.manifest||!store.configuration)return;const blob=new Blob([JSON.stringify({manifest:store.manifest,configuration:store.configuration},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`${store.assetName??'product'}.configuration.json`;anchor.click();URL.revokeObjectURL(url);};
   return <div className="shell">
-    <header className="top"><div><strong>3D Product Configurator</strong><span className="muted project">{store.assetName??'Phase 1 Foundation'}</span></div><div className="top-actions"><label className="upload">Import GLB<input type="file" accept=".glb,model/gltf-binary" onChange={e=>upload(e.target.files?.[0])}/></label><button disabled={!canUndo} onClick={store.undo}>Undo</button><button disabled={!canRedo} onClick={store.redo}>Redo</button><button disabled={!store.configuration} onClick={exportConfiguration}>Save Configuration</button><button className="primary" disabled={!store.configuration?.placement.locked} title="GLB baking/export worker is the next P0 slice">Export GLB</button></div></header>
+    <header className="top"><div><strong>3D Product Configurator</strong><span className="muted project">{store.assetName??'Phase 1 Foundation'}</span></div><div className="top-actions"><label className="upload">Import GLB<input type="file" accept=".glb,model/gltf-binary" onChange={e=>void upload(e.target.files?.[0])}/></label><button disabled={!canUndo} onClick={store.undo}>Undo</button><button disabled={!canRedo} onClick={store.redo}>Redo</button><button disabled={!store.configuration} onClick={exportConfiguration}>Save Configuration</button><button className="primary" disabled={!store.configuration?.placement.locked} title="GLB baking/export worker is the next P0 slice">Export GLB</button></div></header>
     <div className="layout"><aside className="panel"><div className="eyebrow">Components</div><h3>{store.phase==='PREPARE'?'Detected candidates':'Component tree'}</h3>{!store.manifest&&<p className="muted">Import a GLB model. The analyzer will list mesh candidates without claiming semantic parts.</p>}{store.manifest?.components.length===1&&<div className="warning">This asset contains only one editable mesh candidate. Semantic splitting is not assumed.</div>}{store.manifest?.components.map(component=><button key={component.id} className={`component-card ${store.selected===component.id?'active':''}`} onClick={()=>store.select(component.id)}><span>{component.name}</span><small>{component.role} · {component.editable?'editable':'fixed'}</small></button>)}</aside>
       <main className="viewer"><ModelViewport/>{store.phase==='EMPTY'&&<div className="empty-state"><div className="empty-icon">3D</div><h2>Import a customer GLB</h2><p>Canonical input for the Phase 1 editor. No AI-generated geometry is used in the core flow.</p></div>}</main>
       <aside className="panel right">{store.phase==='PREPARE'?<AssetPreparation/>:<Inspector/>}{store.error&&<div className="error" onClick={store.clearError}>{store.error}</div>}{selectedDefinition&&store.phase==='PREPARE'&&<p className="source-id">Source: {selectedDefinition.sourceNodeIds[0]}</p>}</aside></div>
-    <footer className="status"><span className={`dot ${store.configuration?.placement.locked?'ok':''}`}/>{status}<span>Canonical unit: mm</span><span>Runtime scene = projection of manifest + configuration</span></footer>
+    <footer className="status"><span className={`dot ${store.configuration?.placement.locked?'ok':''}`}/>{status}<span>Asset pipeline: {pipelineStatus}</span><span>Canonical unit: mm</span><span>Runtime scene = projection of manifest + configuration</span></footer>
   </div>;
 }
