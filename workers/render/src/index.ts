@@ -7,65 +7,9 @@ import {tmpdir} from 'node:os';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const QUEUE='render-processing';
-const db=new PrismaClient();
-type Mode='MULTI_VIEW'|'SPIN_360';
-type Quality='DRAFT'|'STANDARD'|'HIGH';
-type Data={databaseJobId:string;renderJobId:string;projectId:string;userId:string;sourceObjectKey:string;mode:Mode;quality:Quality;frameCount:number};
-function env(name:string,fallback?:string){const value=process.env[name]??fallback;if(!value)throw new Error(`Missing ${name}`);return value;}
-function redis(){const url=new URL(process.env.REDIS_URL??'redis://localhost:6379');return{host:url.hostname,port:Number(url.port||6379),username:url.username||undefined,password:url.password||undefined,db:url.pathname.length>1?Number(url.pathname.slice(1)):0,tls:url.protocol==='rediss:'?{}:undefined,maxRetriesPerRequest:null};}
-const bucket=env('SUPABASE_STORAGE_BUCKET','product3d');
-const storage=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'),{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
-const here=dirname(fileURLToPath(import.meta.url));
-
-function runBlender(input:string,output:string,mode:Mode,quality:Quality,frameCount:number){
-  const blender=process.env.BLENDER_BIN??'blender';
-  const script=join(here,'..','render.py');
-  return new Promise<void>((resolve,reject)=>{
-    const child=spawn(blender,['-b','-P',script,'--','--input',input,'--output',output,'--mode',mode,'--quality',quality,'--frames',String(frameCount)],{stdio:['ignore','pipe','pipe']});
-    let stderr='';
-    child.stderr.on('data',chunk=>{stderr+=String(chunk);if(stderr.length>16000)stderr=stderr.slice(-16000);});
-    child.on('error',reject);
-    child.on('close',code=>code===0?resolve():reject(new Error(`Blender exited with code ${code}: ${stderr.slice(-4000)}`)));
-  });
-}
-
-async function processJob(job:BullJob<Data>){
-  const d=job.data;
-  await db.job.update({where:{id:d.databaseJobId},data:{status:'PROCESSING',failureReason:null}});
-  const temp=await mkdtemp(join(tmpdir(),'product3d-render-'));
-  try{
-    const source=await storage.storage.from(bucket).download(d.sourceObjectKey);
-    if(source.error||!source.data)throw source.error??new Error('Export GLB missing');
-    const input=join(temp,'model.glb'),output=join(temp,'frames');
-    await writeFile(input,new Uint8Array(await source.data.arrayBuffer()));
-    await runBlender(input,output,d.mode,d.quality,d.frameCount);
-    const files=(await readdir(output)).filter(name=>name.toLowerCase().endsWith('.png')).sort();
-    if(!files.length)throw new Error('Blender completed without PNG outputs');
-    const assets:Prisma.InputJsonObject[]=[];
-    for(const [index,filename] of files.entries()){
-      const objectKey=`renders/${d.projectId}/${d.renderJobId}/${filename}`;
-      const bytes=await readFile(join(output,filename));
-      const uploaded=await storage.storage.from(bucket).upload(objectKey,bytes,{contentType:'image/png',cacheControl:'3600',upsert:false});
-      if(uploaded.error)throw uploaded.error;
-      const view=d.mode==='MULTI_VIEW'?filename.replace(/\.png$/i,''):undefined;
-      assets.push({index,filename,objectKey,...(view?{view}: {})});
-    }
-    const result:Prisma.InputJsonObject={assets,count:assets.length,mode:d.mode,quality:d.quality};
-    await db.job.update({where:{id:d.databaseJobId},data:{status:'COMPLETED',result,failureReason:null}});
-    return result;
-  }catch(error){
-    const message=error instanceof Error?error.message:String(error);
-    const retry=job.attemptsMade+1<(job.opts.attempts??1);
-    await db.job.update({where:{id:d.databaseJobId},data:{status:retry?'RETRYING':'FAILED',failureReason:message}});
-    throw error;
-  }finally{await rm(temp,{recursive:true,force:true});}
-}
-
-const worker=new Worker<Data>(QUEUE,processJob,{connection:redis(),concurrency:Number(process.env.RENDER_WORKER_CONCURRENCY??1)});
-worker.on('completed',job=>console.info(`[render-worker] completed ${job.id}`));
-worker.on('failed',(job,error)=>console.error(`[render-worker] failed ${job?.id??'unknown'}: ${error.message}`));
-async function shutdown(){await worker.close();await db.$disconnect();process.exit(0);}
-process.on('SIGINT',()=>void shutdown());
-process.on('SIGTERM',()=>void shutdown());
-console.info(`[render-worker] listening on ${QUEUE}`);
+const QUEUE='render-processing';const db=new PrismaClient();type Mode='MULTI_VIEW'|'SPIN_360';type Quality='DRAFT'|'STANDARD'|'HIGH';type Data={databaseJobId:string;renderJobId:string;projectId:string;userId:string;sourceObjectKey:string;mode:Mode;quality:Quality;frameCount:number};
+function env(name:string,fallback?:string){const value=process.env[name]??fallback;if(!value)throw new Error(`Missing ${name}`);return value;}function redis(){const url=new URL(process.env.REDIS_URL??'redis://localhost:6379');return{host:url.hostname,port:Number(url.port||6379),username:url.username||undefined,password:url.password||undefined,db:url.pathname.length>1?Number(url.pathname.slice(1)):0,tls:url.protocol==='rediss:'?{}:undefined,maxRetriesPerRequest:null};}
+const bucket=env('SUPABASE_STORAGE_BUCKET','product3d');const storage=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'),{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});const here=dirname(fileURLToPath(import.meta.url));
+function runBlender(input:string,output:string,mode:Mode,quality:Quality,frameCount:number){const blender=process.env.BLENDER_BIN??'blender',script=join(here,'..','render.py');return new Promise<void>((resolve,reject)=>{const child=spawn(blender,['-b','-P',script,'--','--input',input,'--output',output,'--mode',mode,'--quality',quality,'--frames',String(frameCount)],{stdio:['ignore','pipe','pipe']});let stderr='';child.stderr.on('data',chunk=>{stderr+=String(chunk);if(stderr.length>16000)stderr=stderr.slice(-16000);});child.on('error',reject);child.on('close',code=>code===0?resolve():reject(new Error(`Blender exited with code ${code}: ${stderr.slice(-4000)}`)));});}
+async function processJob(job:BullJob<Data>){const d=job.data,startedAt=Date.now();console.info(JSON.stringify({event:'render_started',jobId:d.databaseJobId,projectId:d.projectId,mode:d.mode,quality:d.quality,frameCount:d.frameCount}));await db.job.update({where:{id:d.databaseJobId},data:{status:'PROCESSING',failureReason:null}});const temp=await mkdtemp(join(tmpdir(),'product3d-render-'));try{const source=await storage.storage.from(bucket).download(d.sourceObjectKey);if(source.error||!source.data)throw source.error??new Error('Export GLB missing');const input=join(temp,'model.glb'),output=join(temp,'frames');await writeFile(input,new Uint8Array(await source.data.arrayBuffer()));await runBlender(input,output,d.mode,d.quality,d.frameCount);const files=(await readdir(output)).filter(name=>name.toLowerCase().endsWith('.png')).sort();if(!files.length)throw new Error('Blender completed without PNG outputs');const assets:Prisma.InputJsonObject[]=[];for(const[index,filename]of files.entries()){const objectKey=`renders/${d.projectId}/${d.renderJobId}/${filename}`,bytes=await readFile(join(output,filename));const uploaded=await storage.storage.from(bucket).upload(objectKey,bytes,{contentType:'image/png',cacheControl:'3600',upsert:false});if(uploaded.error)throw uploaded.error;const view=d.mode==='MULTI_VIEW'?filename.replace(/\.png$/i,''):undefined;assets.push({index,filename,objectKey,...(view?{view}:{})});}const result:Prisma.InputJsonObject={assets,count:assets.length,mode:d.mode,quality:d.quality};await db.job.update({where:{id:d.databaseJobId},data:{status:'COMPLETED',result,failureReason:null}});console.info(JSON.stringify({event:'render_completed',jobId:d.databaseJobId,projectId:d.projectId,mode:d.mode,quality:d.quality,frameCount:assets.length,durationMs:Date.now()-startedAt}));return result;}catch(error){const message=error instanceof Error?error.message:String(error),retry=job.attemptsMade+1<(job.opts.attempts??1);console.error(JSON.stringify({event:'render_failed',jobId:d.databaseJobId,projectId:d.projectId,mode:d.mode,quality:d.quality,durationMs:Date.now()-startedAt,willRetry:retry,error:message}));await db.job.update({where:{id:d.databaseJobId},data:{status:retry?'RETRYING':'FAILED',failureReason:message}});throw error;}finally{await rm(temp,{recursive:true,force:true});}}
+const worker=new Worker<Data>(QUEUE,processJob,{connection:redis(),concurrency:Number(process.env.RENDER_WORKER_CONCURRENCY??1)});worker.on('completed',job=>console.info(`[render-worker] completed ${job.id}`));worker.on('failed',(job,error)=>console.error(`[render-worker] failed ${job?.id??'unknown'}: ${error.message}`));async function shutdown(){await worker.close();await db.$disconnect();process.exit(0);}process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown());console.info(`[render-worker] listening on ${QUEUE}`);
