@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id        String       @id
-  email     String       @unique
-  assets    ModelAsset[]
-  projects  Project[]
-  presets   UserPreset[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id         String      @id
+  email      String      @unique
+  assets     ModelAsset[]
+  projects   Project[]
+  presets    UserPreset[]
+  renderJobs RenderJob[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 }
 
 model ModelAsset {
@@ -64,6 +65,7 @@ model Project {
   user            User           @relation(fields: [userId], references: [id])
   modelAsset      ModelAsset     @relation(fields: [modelAssetId], references: [id])
   versions        ModelVersion[]
+  renderJobs      RenderJob[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -140,6 +142,26 @@ model Job {
   bullmqJobId   String?     @unique
   modelAssetId  String?
   modelAsset    ModelAsset? @relation(fields: [modelAssetId], references: [id], onDelete: SetNull)
+  renderJob     RenderJob?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+}
+
+model RenderJob {
+  id                String   @id @default(cuid())
+  userId            String
+  projectId         String
+  jobId             String   @unique
+  sourceExportJobId String
+  mode              String
+  quality           String
+  frameCount        Int
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  job                Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
 }
