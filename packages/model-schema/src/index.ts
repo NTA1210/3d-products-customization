@@ -35,6 +35,7 @@ export const ComponentManifestSchema = z.object({
   id:z.string(),
   sourceNodeIds:z.array(z.string()).default([]),
   sourceMeshIds:z.array(z.string()).default([]),
+  sourceRegionIds:z.array(z.string()).optional(),
   name:z.string(),
   role:ComponentRole.default('UNKNOWN'),
   editable:z.boolean().default(false),
@@ -100,3 +101,45 @@ export const ComponentVariantSchema = z.object({
   dimensionPolicy:z.enum(['KEEP','AUTO_FIT','RULE_BASED'])
 });
 export type ComponentVariant = z.infer<typeof ComponentVariantSchema>;
+
+export const AssetBoundsSchema=z.object({
+  min:z.tuple([z.number(),z.number(),z.number()]),
+  max:z.tuple([z.number(),z.number(),z.number()])
+});
+export type AssetBounds=z.infer<typeof AssetBoundsSchema>;
+
+export const GeometryRegionSchema=z.object({
+  id:z.string(),sourceMeshId:z.string(),sourcePrimitiveId:z.string(),islandIndex:z.number().int().nonnegative(),
+  triangleCount:z.number().int().nonnegative(),vertexCount:z.number().int().nonnegative(),bounds:AssetBoundsSchema.optional()
+});
+export type GeometryRegion=z.infer<typeof GeometryRegionSchema>;
+
+export const AssetPrimitiveAnalysisSchema=z.object({
+  id:z.string(),primitiveIndex:z.number().int().nonnegative(),mode:z.number().int(),triangleCount:z.number().int().nonnegative(),
+  vertexCount:z.number().int().nonnegative(),hasMaterial:z.boolean(),hasUv:z.boolean(),regions:z.array(GeometryRegionSchema)
+});
+export type AssetPrimitiveAnalysis=z.infer<typeof AssetPrimitiveAnalysisSchema>;
+
+export const AssetMeshAnalysisSchema=z.object({
+  id:z.string(),meshIndex:z.number().int().nonnegative(),name:z.string(),sourceNodeIds:z.array(z.string()),
+  primitives:z.array(AssetPrimitiveAnalysisSchema)
+});
+export type AssetMeshAnalysis=z.infer<typeof AssetMeshAnalysisSchema>;
+
+export const AssetComponentCandidateSchema=z.object({
+  id:z.string(),name:z.string(),sourceNodeId:z.string(),sourceMeshId:z.string(),sourcePrimitiveId:z.string(),
+  regionIds:z.array(z.string()),semanticStatus:z.literal('UNCONFIRMED')
+});
+export type AssetComponentCandidate=z.infer<typeof AssetComponentCandidateSchema>;
+
+export const AssetAnalysisWarningSchema=z.object({
+  code:z.string(),severity:z.enum(['INFO','WARNING','ERROR']),message:z.string(),sourceId:z.string().optional()
+});
+export type AssetAnalysisWarning=z.infer<typeof AssetAnalysisWarningSchema>;
+
+export const AssetAnalysisSchema=z.object({
+  version:z.literal(1),unitScaleToMm:z.number().positive(),
+  stats:z.object({nodes:z.number().int().nonnegative(),meshes:z.number().int().nonnegative(),primitives:z.number().int().nonnegative(),triangles:z.number().int().nonnegative(),materials:z.number().int().nonnegative(),textures:z.number().int().nonnegative()}),
+  meshes:z.array(AssetMeshAnalysisSchema),componentCandidates:z.array(AssetComponentCandidateSchema),warnings:z.array(AssetAnalysisWarningSchema)
+});
+export type AssetAnalysis=z.infer<typeof AssetAnalysisSchema>;

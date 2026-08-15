@@ -7,23 +7,18 @@ Base URL: `/api`
 ### `POST /assets/import`
 Creates a `ModelAsset` in `AWAITING_UPLOAD` and returns a Supabase Storage signed-upload grant (`bucket`, `path`, `token`). The bucket is private; the browser uploads with `uploadToSignedUrl` using only the publishable key.
 
-Request:
-```json
-{
-  "name": "Dining Table",
-  "originalFilename": "table.glb",
-  "contentType": "model/gltf-binary",
-  "sizeBytes": 10485760
-}
-```
-
 Phase 1 accepts `.glb` as canonical editor input. `MAX_ASSET_BYTES` is configurable and defaults to 250 MB.
 
 ### `POST /assets/:id/analyze`
-Checks that the source object exists in Supabase Storage, creates a persistent database `Job`, and queues `validate-normalize` in BullMQ.
+Checks that the source object exists, creates a persistent database `Job`, and queues analysis/normalization in BullMQ. `POST /assets/:id/normalize` queues the same idempotent pipeline when normalization is requested explicitly.
 
 Worker flow:
-`Supabase download -> Khronos validation -> glTF Transform prune/dedup -> re-validation -> Supabase normalized GLB upload -> PostgreSQL state/result update`.
+`Supabase download -> Khronos validation -> source scene/mesh/primitive analysis -> disconnected triangle-island detection -> glTF Transform normalize -> re-validation -> Supabase normalized artifact -> PostgreSQL result`.
+
+Geometry islands are candidate regions only; the API does not label them as semantic components.
+
+### `GET /assets/:id/analysis`
+Returns persisted analysis version 1: source-index based component candidates, mesh/primitive/region data, triangle/material/texture stats, and model-quality warnings. Stable IDs use glTF node/mesh/primitive indices rather than mesh names.
 
 ### `GET /jobs/:id`
 Persistent states: `QUEUED`, `PROCESSING`, `RETRYING`, `COMPLETED`, `FAILED`.

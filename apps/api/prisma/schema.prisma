@@ -26,6 +26,8 @@ model ModelAsset {
   normalizedObjectKey String?
   thumbnailUrl        String?
   validationJson      Json?
+  analysisJson        Json?
+  analysisVersion     Int?
   status              String          @default("AWAITING_UPLOAD")
   unit                String          @default("mm")
   manifests           ModelManifest[]

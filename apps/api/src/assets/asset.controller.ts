@@ -60,8 +60,7 @@ export class AssetController {
     return asset;
   }
 
-  @Post(':id/analyze')
-  async analyze(@Param('id') id: string) {
+  private async enqueueAnalysis(id: string) {
     const asset = await this.db.modelAsset.findUnique({ where: { id } });
     if (!asset) throw new NotFoundException('Asset not found.');
     if (!asset.sourceObjectKey) throw new BadRequestException('Asset has no source object key.');
@@ -73,23 +72,13 @@ export class AssetController {
 
     const databaseJob = await this.db.job.create({
       data: {
-        type: 'ASSET_VALIDATE_NORMALIZE',
-        status: 'QUEUED',
-        modelAssetId: id,
-        payload: {
-          assetId: id,
-          sourceObjectKey: asset.sourceObjectKey,
-          originalFilename: asset.originalFilename,
-        },
+        type: 'ASSET_ANALYZE_NORMALIZE', status: 'QUEUED', modelAssetId: id,
+        payload: { assetId: id, sourceObjectKey: asset.sourceObjectKey, originalFilename: asset.originalFilename },
       },
     });
-
     try {
       const queued = await this.assetQueue.enqueue({
-        assetId: id,
-        databaseJobId: databaseJob.id,
-        sourceObjectKey: asset.sourceObjectKey,
-        originalFilename: asset.originalFilename,
+        assetId: id, databaseJobId: databaseJob.id, sourceObjectKey: asset.sourceObjectKey, originalFilename: asset.originalFilename,
       });
       await this.db.$transaction([
         this.db.job.update({ where: { id: databaseJob.id }, data: { bullmqJobId: String(queued.id) } }),
@@ -101,6 +90,20 @@ export class AssetController {
       await this.db.job.update({ where: { id: databaseJob.id }, data: { status: 'FAILED', failureReason: message } });
       throw error;
     }
+  }
+
+  @Post(':id/analyze')
+  analyze(@Param('id') id: string) { return this.enqueueAnalysis(id); }
+
+  @Post(':id/normalize')
+  normalize(@Param('id') id: string) { return this.enqueueAnalysis(id); }
+
+  @Get(':id/analysis')
+  async analysis(@Param('id') id: string) {
+    const asset = await this.db.modelAsset.findUnique({ where: { id }, select: { analysisJson: true, analysisVersion: true, status: true } });
+    if (!asset) throw new NotFoundException('Asset not found.');
+    if (!asset.analysisJson) throw new NotFoundException('Asset analysis is not available yet.');
+    return asset.analysisJson;
   }
 
   @Get(':id/download')
