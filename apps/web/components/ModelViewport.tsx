@@ -90,7 +90,8 @@ function LoadedModel({url}:{url:string}){
         if(materialPreset?.baseColor)material.color.set(materialPreset.baseColor);
         if(materialPreset){material.roughness=materialPreset.roughness;material.metalness=materialPreset.metalness;}
         if(state.color)material.color.set(state.color);
-        material.emissive.set(componentId===selected?'#1e4f85':'#000000');material.emissiveIntensity=componentId===selected?.18:0;
+        material.emissive.set(componentId===selected?'#1e4f85':'#000000');
+        material.emissiveIntensity=componentId===selected ? .18 : 0;
       }
     });
   },[configuration,manifest,prepared.scene,selected]);
