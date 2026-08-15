@@ -17,6 +17,8 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm --filter @product3d/api prisma:generate
+      - name: Validate Python worker syntax
+        run: python -m py_compile workers/export/convert.py workers/geometry/analyze.py workers/render/render.py
       - run: pnpm test
       - name: Build
         id: build

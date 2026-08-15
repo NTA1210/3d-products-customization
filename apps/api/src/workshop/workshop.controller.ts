@@ -24,7 +24,13 @@ export class WorkshopController{
   @Get('workshops')
   workshops(){return this.db.workshop.findMany({where:{active:true},orderBy:{name:'asc'}});}
 
+  private async expireDue(userId?:string,projectId?:string){
+    const result=await this.db.quoteRequest.updateMany({where:{...(userId?{userId}:{}),...(projectId?{projectId}:{}),expiresAt:{lt:new Date()},status:{in:['SUBMITTED','RECEIVED']}},data:{status:'EXPIRED'}});
+    if(result.count)console.info(JSON.stringify({event:'rfq_expired',count:result.count,userId:userId??null,projectId:projectId??null}));
+  }
+
   private async ownedRfq(id:string,userId:string){
+    await this.expireDue(userId);
     const rfq=await this.db.quoteRequest.findFirst({where:{id,userId},include:{workshop:true,quotes:true}});
     if(!rfq)throw new NotFoundException('Quote request not found.');return rfq;
   }
@@ -40,6 +46,7 @@ export class WorkshopController{
   @Post('projects/:projectId/rfq')
   async create(@Req()request:AuthRequest,@Param('projectId')projectId:string,@Body()body:unknown){
     const user=requireAuthUser(request),parsed=CreateRfqSchema.safeParse(body);if(!parsed.success)throw new BadRequestException(parsed.error.flatten());
+    const expiresAt=parsed.data.expiresAt?new Date(parsed.data.expiresAt):undefined;if(expiresAt&&expiresAt.getTime()<=Date.now())throw new BadRequestException('expiresAt must be in the future.');
     const project=await this.db.project.findFirst({where:{id:projectId,userId:user.id},include:{modelAsset:{include:{manifests:{orderBy:{version:'desc'},take:1}}}}});
     if(!project)throw new NotFoundException('Project not found.');
     const [version,workshop,exportJob,check,render]=await Promise.all([
@@ -63,13 +70,14 @@ export class WorkshopController{
     const materials=[...new Set(Object.values(configuration.components).map(state=>state.materialId).filter((id):id is string=>Boolean(id)))];
     const renderResult=render?.job.result as {assets?:RenderAsset[]}|null;
     const stored:StoredPayload={projectId,modelVersionId:version.id,customerNote:parsed.data.customerNote,dimensions,components,materials,manufacturingIssues:(check?.issuesJson as unknown[])??[],previewObjectKeys:(renderResult?.assets??[]).map(asset=>asset.objectKey),exportObjectKey:exportResult.objectKey};
-    const rfq=await this.db.quoteRequest.create({data:{userId:user.id,projectId,modelVersionId:version.id,workshopId:workshop.id,status:'SUBMITTED',customerNote:parsed.data.customerNote,payloadJson:stored as unknown as Prisma.InputJsonValue,submittedAt:new Date(),expiresAt:parsed.data.expiresAt?new Date(parsed.data.expiresAt):undefined}});
+    const rfq=await this.db.quoteRequest.create({data:{userId:user.id,projectId,modelVersionId:version.id,workshopId:workshop.id,status:'SUBMITTED',customerNote:parsed.data.customerNote,payloadJson:stored as unknown as Prisma.InputJsonValue,submittedAt:new Date(),expiresAt}});
     return{...rfq,workshop,payload:await this.hydrate(stored)};
   }
 
   @Get('projects/:projectId/rfq')
   async list(@Req()request:AuthRequest,@Param('projectId')projectId:string){
     const user=requireAuthUser(request),project=await this.db.project.findFirst({where:{id:projectId,userId:user.id}});if(!project)throw new NotFoundException('Project not found.');
+    await this.expireDue(user.id,projectId);
     const rows=await this.db.quoteRequest.findMany({where:{projectId,userId:user.id},include:{workshop:true,quotes:true},orderBy:{createdAt:'desc'}});
     return Promise.all(rows.map(async row=>({...row,payload:await this.hydrate(row.payloadJson as unknown as StoredPayload)})));
   }
@@ -80,7 +88,7 @@ export class WorkshopController{
   @Post('rfq/:id/quotes')
   async addQuote(@Req()request:AuthRequest,@Param('id')id:string,@Body()body:unknown){
     const user=requireAuthUser(request),rfq=await this.ownedRfq(id,user.id),parsed=QuoteSchema.safeParse(body);if(!parsed.success)throw new BadRequestException(parsed.error.flatten());
-    if(!['SUBMITTED','RECEIVED'].includes(rfq.status))throw new BadRequestException('Quote request is not accepting quote responses.');
+    if(!['SUBMITTED','RECEIVED'].includes(rfq.status))throw new BadRequestException(`Quote request is ${rfq.status.toLowerCase()} and is not accepting quote responses.`);
     const quote=await this.db.quote.create({data:{quoteRequestId:id,status:'RECEIVED',...parsed.data,responseJson:parsed.data.responseJson as Prisma.InputJsonValue|undefined}});
     await this.db.quoteRequest.update({where:{id},data:{status:'RECEIVED'}});return quote;
   }
@@ -88,7 +96,7 @@ export class WorkshopController{
   @Patch('rfq/:id/status')
   async status(@Req()request:AuthRequest,@Param('id')id:string,@Body()body:unknown){
     const user=requireAuthUser(request),rfq=await this.ownedRfq(id,user.id),parsed=StatusSchema.safeParse(body);if(!parsed.success)throw new BadRequestException(parsed.error.flatten());
-    if(rfq.status!=='RECEIVED')throw new BadRequestException('Only a received quote request can be accepted or rejected.');
+    if(rfq.status!=='RECEIVED')throw new BadRequestException(`Only a received quote request can be accepted or rejected; current status is ${rfq.status}.`);
     return this.db.quoteRequest.update({where:{id},data:{status:parsed.data.status}});
   }
 }
