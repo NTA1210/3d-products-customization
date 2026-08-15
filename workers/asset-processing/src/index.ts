@@ -10,7 +10,7 @@ import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import validator from 'gltf-validator';
-import {collectModelQualityWarnings} from './quality';
+import {collectModelQualityWarnings} from './quality.js';
 
 const QUEUE_NAME='asset-processing';
 const GL_TRIANGLES=4;
