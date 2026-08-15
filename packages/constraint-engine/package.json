@@ -1,0 +1,1 @@
+{"name":"@product3d/constraint-engine","version":"0.2.0","type":"module","main":"src/index.ts","dependencies":{"@product3d/model-schema":"workspace:*","@product3d/action-engine":"workspace:*"}}
