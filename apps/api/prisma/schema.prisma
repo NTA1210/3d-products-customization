@@ -8,10 +8,11 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
+  id        String       @id @default(cuid())
+  email     String       @unique
   projects  Project[]
-  createdAt DateTime  @default(now())
+  presets   UserPreset[]
+  createdAt DateTime     @default(now())
 }
 
 model ModelAsset {
@@ -81,13 +82,33 @@ model MaterialPreset {
 }
 
 model ComponentVariant {
-  id                String @id
+  id                String  @id
   groupId           String
   role              String
   name              String
   assetUrl          String
   compatibilityJson Json
   metadataJson      Json
+  active            Boolean @default(true)
+}
+
+model StylePreset {
+  id          String   @id
+  name        String
+  description String?
+  styleTags   String[]
+  rulesJson   Json
+  active      Boolean  @default(true)
+}
+
+model UserPreset {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  rulesJson Json
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ManufacturingRule {

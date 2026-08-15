@@ -5,8 +5,10 @@ import { validateAction } from '@product3d/constraint-engine';
 import { canApplyMaterial,canApplyVariant } from '@product3d/compatibility-engine';
 
 export type EditorResources={materials?:MaterialPreset[];variants?:ComponentVariant[]};
+export type ApplyOptions=EditorResources;
 export type ApplyFailure={ok:false;code:string;message:string;action?:EditorAction};
 export type ApplySuccess={ok:true;configuration:ModelConfiguration;actions:EditorAction[]};
+export type ApplyResult=ApplySuccess|ApplyFailure;
 
 function componentAxis(property:'WIDTH'|'HEIGHT'|'DEPTH'){
   return property.toLowerCase() as 'width'|'height'|'depth';
@@ -40,7 +42,7 @@ function applyDependencyRules(before:ModelConfiguration,next:ModelConfiguration,
   }
 }
 
-export function applyAction(rawAction:unknown,manifest:ModelManifest,input:ModelConfiguration,resources:EditorResources={}):ApplySuccess|ApplyFailure{
+export function applyAction(rawAction:unknown,manifest:ModelManifest,input:ModelConfiguration,resources:EditorResources={}):ApplyResult{
   const parsed=EditorActionSchema.safeParse(rawAction);
   if(!parsed.success)return {ok:false,code:'INVALID_ACTION_SCHEMA',message:parsed.error.issues[0]?.message??'Invalid action.'};
   const action=parsed.data;
@@ -81,7 +83,7 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
   return {ok:true,configuration:next,actions:[action]};
 }
 
-export function applyActions(actions:unknown[],manifest:ModelManifest,input:ModelConfiguration,resources:EditorResources={}):ApplySuccess|ApplyFailure{
+export function applyActions(actions:unknown[],manifest:ModelManifest,input:ModelConfiguration,resources:EditorResources={}):ApplyResult{
   let current=structuredClone(input);
   const accepted:EditorAction[]=[];
   for(const rawAction of actions){
