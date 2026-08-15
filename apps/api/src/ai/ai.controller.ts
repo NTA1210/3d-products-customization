@@ -1,4 +1,4 @@
-import {BadRequestException,Body,Controller,NotFoundException,Param,Post,Req,TooManyRequestsException,UseGuards} from '@nestjs/common';
+import {BadRequestException,Body,Controller,HttpException,HttpStatus,NotFoundException,Param,Post,Req,UseGuards} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {validateAiDesignResponse} from '@product3d/ai-engine';
 import {ComponentVariantSchema,MaterialPresetSchema,ModelConfigurationSchema,ModelManifestSchema} from '@product3d/model-schema';
@@ -24,7 +24,7 @@ export class AiController{
     const limit=Number(process.env.AI_SUGGESTIONS_PER_HOUR??20);
     const since=new Date(Date.now()-60*60*1000);
     const recent=await this.db.aIRequest.count({where:{userId:user.id,type:'DESIGN_SUGGESTION',createdAt:{gte:since}}});
-    if(recent>=limit)throw new TooManyRequestsException(`AI suggestion quota exceeded (${limit}/hour).`);
+    if(recent>=limit)throw new HttpException(`AI suggestion quota exceeded (${limit}/hour).`,HttpStatus.TOO_MANY_REQUESTS);
 
     const project=await this.db.project.findFirst({where:{id:projectId,userId:user.id},include:{modelAsset:{include:{manifests:{orderBy:{version:'desc'},take:1}}}}});
     if(!project)throw new NotFoundException('Project not found.');
