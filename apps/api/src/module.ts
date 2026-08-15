@@ -9,8 +9,10 @@ import {JobController} from './jobs/job.controller';
 import {ManufacturingController} from './manufacturing/manufacturing.controller';
 import {PrismaService} from './prisma/prisma.service';
 import {ProjectController} from './projects/project.controller';
+import {AiVisualizationQueueService} from './queue/ai-visualization-queue.service';
 import {AssetQueueService} from './queue/asset-queue.service';
 import {ExportQueueService} from './queue/export-queue.service';
+import {GeometryQueueService} from './queue/geometry-queue.service';
 import {RenderQueueService} from './queue/render-queue.service';
 import {RenderController} from './render/render.controller';
 import {StorageService} from './storage/storage.service';
@@ -26,6 +28,6 @@ class MaterialController{
 
 @Module({
   controllers:[HealthController,AuthController,AssetController,CatalogController,JobController,ProjectController,MaterialController,RenderController,AiController,ManufacturingController],
-  providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,SupabaseAuthGuard,AiProviderService],
+  providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,GeometryQueueService,AiVisualizationQueueService,SupabaseAuthGuard,AiProviderService],
 })
 export class AppModule{}
