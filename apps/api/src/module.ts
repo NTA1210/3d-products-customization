@@ -1,12 +1,3 @@
-import {Controller,Get,Module} from '@nestjs/common';
-import {AssetController} from './assets/asset.controller';
-import {JobController} from './jobs/job.controller';
-import {PrismaService} from './prisma/prisma.service';
-import {ProjectController} from './projects/project.controller';
-import {AssetQueueService} from './queue/asset-queue.service';
-import {ExportQueueService} from './queue/export-queue.service';
-import {StorageService} from './storage/storage.service';
-@Controller('health') class HealthController{@Get()health(){return{ok:true,service:'product3d-api'}}}
-@Controller('materials') class MaterialController{constructor(private readonly db:PrismaService){}@Get()all(){return this.db.materialPreset.findMany({where:{active:true}})}}
-@Module({controllers:[HealthController,AssetController,JobController,ProjectController,MaterialController],providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService]})
-export class AppModule{}
+import {Controller,Get,Module} from '@nestjs/common';import {AssetController} from './assets/asset.controller';import {CatalogController} from './catalog/catalog.controller';import {JobController} from './jobs/job.controller';import {PrismaService} from './prisma/prisma.service';import {ProjectController} from './projects/project.controller';import {AssetQueueService} from './queue/asset-queue.service';import {ExportQueueService} from './queue/export-queue.service';import {StorageService} from './storage/storage.service';
+@Controller('health')class HealthController{@Get()health(){return{ok:true,service:'product3d-api'}}}@Controller('materials')class MaterialController{constructor(private readonly db:PrismaService){}@Get()all(){return this.db.materialPreset.findMany({where:{active:true}})}}
+@Module({controllers:[HealthController,AssetController,CatalogController,JobController,ProjectController,MaterialController],providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService]})export class AppModule{}
