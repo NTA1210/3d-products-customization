@@ -20,7 +20,7 @@ const here=dirname(fileURLToPath(import.meta.url));
 
 function runBlender(input:string,output:string,mode:Mode,quality:Quality,frameCount:number){
   const blender=process.env.BLENDER_BIN??'blender';
-  const script=join(here,'render.py');
+  const script=join(here,'..','render.py');
   return new Promise<void>((resolve,reject)=>{
     const child=spawn(blender,['-b','-P',script,'--','--input',input,'--output',output,'--mode',mode,'--quality',quality,'--frames',String(frameCount)],{stdio:['ignore','pipe','pipe']});
     let stderr='';
