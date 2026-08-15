@@ -1,8 +1,8 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, prune } from '@gltf-transform/functions';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { createClient } from '@supabase/supabase-js';
 import { Job as BullJob, Worker } from 'bullmq';
 import * as draco3d from 'draco3dgltf';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
@@ -41,35 +41,26 @@ function redisConnection() {
   };
 }
 
-function storageClient() {
-  const accessKeyId = process.env.S3_ACCESS_KEY;
-  const secretAccessKey = process.env.S3_SECRET_KEY;
-  return new S3Client({
-    region: requiredEnv('S3_REGION', 'us-east-1'),
-    endpoint: process.env.S3_ENDPOINT,
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE ? process.env.S3_FORCE_PATH_STYLE === 'true' : Boolean(process.env.S3_ENDPOINT),
-    credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
-  });
-}
-
-const s3 = storageClient();
-const bucket = requiredEnv('S3_BUCKET', 'product3d');
+const storage = createClient(
+  requiredEnv('SUPABASE_URL'),
+  requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
+);
+const bucket = requiredEnv('SUPABASE_STORAGE_BUCKET', 'product3d-assets');
 
 async function downloadObject(key: string) {
-  const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!response.Body) throw new Error(`Object ${key} has an empty response body.`);
-  return response.Body.transformToByteArray();
+  const { data, error } = await storage.storage.from(bucket).download(key);
+  if (error) throw error;
+  return new Uint8Array(await data.arrayBuffer());
 }
 
 async function uploadObject(key: string, bytes: Uint8Array) {
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: bytes,
-      ContentType: 'model/gltf-binary',
-    }),
-  );
+  const { error } = await storage.storage.from(bucket).upload(key, bytes, {
+    contentType: 'model/gltf-binary',
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
 }
 
 async function validateGlb(bytes: Uint8Array, uri: string) {
@@ -169,7 +160,7 @@ async function processAsset(job: BullJob<AssetProcessingJobData>) {
         data: {
           status: 'READY',
           normalizedObjectKey,
-          normalizedGlbUrl: `s3://${bucket}/${normalizedObjectKey}`,
+          normalizedGlbUrl: `supabase://${bucket}/${normalizedObjectKey}`,
           validationJson: sourceReport as unknown as Prisma.InputJsonValue,
         },
       }),
