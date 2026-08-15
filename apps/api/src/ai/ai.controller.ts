@@ -10,6 +10,8 @@ import {AiProviderService} from './ai-provider.service';
 
 const RequestSchema=z.object({configurationJson:ModelConfigurationSchema,renderJobId:z.string().min(1),instructions:z.string().max(6000).optional()});
 type RenderAsset={view?:string;objectKey:string;filename:string};
+type VariantCompatibility={roles?:string[];modelTags?:string[]};
+type VariantMetadata={anchorType?:string;dimensionPolicy?:string};
 
 @Controller('projects/:projectId/ai')
 @UseGuards(SupabaseAuthGuard)
@@ -46,7 +48,7 @@ export class AiController{
       this.db.stylePreset.findMany({where:{active:true}}),
     ]);
     const materials=materialRows.map(row=>MaterialPresetSchema.parse({id:row.id,name:row.name,category:row.category,...(row.propertiesJson as object),styleTags:row.styleTags}));
-    const variants=variantRows.map(row=>ComponentVariantSchema.parse({id:row.id,groupId:row.groupId,name:row.name,role:row.role,assetUrl:row.assetUrl,...(row.metadataJson as object)}));
+    const variants=variantRows.map(row=>{const compatibility=(row.compatibilityJson??{}) as VariantCompatibility,metadata=(row.metadataJson??{}) as VariantMetadata;return ComponentVariantSchema.parse({id:row.id,groupId:row.groupId,name:row.name,role:row.role,assetUrl:row.assetUrl,anchorType:metadata.anchorType??'BOUNDS_CENTER',compatibleModelTags:compatibility.modelTags??[],compatibleComponentRoles:compatibility.roles??[row.role],dimensionPolicy:metadata.dimensionPolicy??'KEEP'});});
     const catalog={materialIds:new Set(materials.map(v=>v.id)),variantIds:new Set(variants.map(v=>v.id)),styleIds:new Set(styleRows.map(v=>v.id)),componentIds:new Set(manifest.components.map(v=>v.id))};
 
     const providerInput={
