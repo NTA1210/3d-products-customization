@@ -17,6 +17,7 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm --filter @product3d/api prisma:generate
+      - run: pnpm test
       - name: Build
         id: build
         continue-on-error: true
