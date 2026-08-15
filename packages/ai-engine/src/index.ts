@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {EditorActionSchema,type EditorAction} from '@product3d/action-engine';
 import {applyActions} from '@product3d/editor-core';
-import type {ModelConfiguration,ModelManifest} from '@product3d/model-schema';
+import type {ComponentVariant,MaterialPreset,ModelConfiguration,ModelManifest} from '@product3d/model-schema';
 
 const AiActionSchema=EditorActionSchema.refine(action=>action.source==='AI',{message:'AI suggestions must use source=AI'});
 export const AiSuggestionSchema=z.object({id:z.string().min(1),title:z.string().min(1),reason:z.string().min(1),actions:z.array(AiActionSchema).min(1).max(20)});
@@ -10,7 +10,7 @@ export type AiDesignResponse=z.infer<typeof AiDesignResponseSchema>;
 
 export type AiCatalog={materialIds:Set<string>;variantIds:Set<string>;styleIds:Set<string>;componentIds:Set<string>};
 
-export function validateAiDesignResponse(input:{response:unknown;manifest:ModelManifest;configuration:ModelConfiguration;catalog:AiCatalog;materials?:Array<{id:string;category:string}>;variants?:Array<{id:string;groupId:string;role:string;compatibilityJson?:unknown}>}){
+export function validateAiDesignResponse(input:{response:unknown;manifest:ModelManifest;configuration:ModelConfiguration;catalog:AiCatalog;materials?:MaterialPreset[];variants?:ComponentVariant[]}){
   const parsed=AiDesignResponseSchema.parse(input.response);
   const suggestions=parsed.suggestions.map(suggestion=>{
     const errors:string[]=[];
