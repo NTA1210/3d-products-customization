@@ -1,7 +1,7 @@
 # Implementation status
 
 ## P0 working foundation
-- Monorepo and local PostgreSQL/Redis/MinIO infrastructure.
+- Monorepo and local PostgreSQL/Redis infrastructure.
 - GLB upload/viewer using React Three Fiber.
 - Mesh candidate discovery for arbitrary GLB scene graphs.
 - Asset Preparation gate with explicit role/editability/axis configuration.
@@ -17,27 +17,32 @@
 - Configuration JSON save/export.
 - Prisma persistence schema + migrations + material seed.
 - Project/version/manifest/material API persistence routes.
-- Signed S3/MinIO source upload and source/normalized download URLs.
-- BullMQ asset processing producer + separate worker process.
-- Khronos glTF 2.0 validation before and after normalization.
-- glTF Transform normalization (`prune`, `dedup`) with standard extensions and Draco dependencies.
+- Private Supabase Storage with signed browser uploads/downloads.
+- BullMQ asset-processing queue and separate worker.
+- Khronos glTF validation before/after normalization.
+- Lossless glTF Transform normalization (`prune`, `dedup`) with Draco/Meshopt support.
 - Persistent asset/job lifecycle and validation report storage.
-- Local MinIO bucket bootstrap/CORS and Redis `noeviction` configuration.
 
 ## P0 next slices
 - Disconnected geometry-island detection and merge/split Asset Preparation UI.
-- Stable source-node mapping from glTF parser indices for production manifests.
+- Stable source-node/primitive mapping from glTF parser indices for production manifests.
+- Persist server-produced asset analysis + model-quality warnings.
 - GLB configuration baking + validation + re-import test.
 - Fixture assets and automated unit/integration/E2E coverage.
-- Hardened upload constraints using observed object metadata/checksum, not only declared request metadata.
+- Hardened upload validation using observed object/content metadata rather than only declared request metadata.
 
-## P1/P2 intentionally not faked
-- Variant asset replacement/anchor auto-fit.
-- Style/preset transaction UI.
-- Blender photorealistic render.
-- AI design suggestions and lifestyle visualization.
-- Manufacturability Trimesh worker.
-- AR current-configuration export.
-- Collection recommendation and RFQ/workshop flow.
+## P1 next slices
+- Variant asset replacement + anchors/auto-fit.
+- Style/preset batch transaction UI.
+- Browser/catalogue render and Blender render job.
+- Structured AI design suggestions + visualization.
+- Manufacturability rule engine + Trimesh worker.
+- 360 viewer and AR current-configuration export.
 
-Routes that still require unimplemented workers/providers return explicit `501 Not Implemented`; they do not claim success with demo IDs.
+## P2 next slices
+- Collection recommendation.
+- RFQ/workshop flow and polish.
+- Additional export formats.
+- Advanced geometry analysis.
+
+Routes that still require unimplemented workers/providers return explicit `501 Not Implemented`; they never report fake successful jobs.
