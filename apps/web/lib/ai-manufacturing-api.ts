@@ -1,7 +1,7 @@
 import type {EditorAction} from '@product3d/action-engine';
 import type {ModelConfiguration} from '@product3d/model-schema';
 import {authFetch} from './supabase-browser';
-import {queueExport,waitForJob} from './project-api';
+import {getJobArtifact,queueExport,waitForJob} from './project-api';
 
 const root=()=>`${(process.env.NEXT_PUBLIC_API_URL??'http://localhost:4000').replace(/\/$/,'')}/api`;
 async function request<T>(url:string,init?:RequestInit):Promise<T>{const response=await authFetch(url,init);if(!response.ok)throw new Error(await response.text());return response.json() as Promise<T>;}
@@ -9,6 +9,7 @@ async function request<T>(url:string,init?:RequestInit):Promise<T>{const respons
 export type ValidatedSuggestion={id:string;title:string;reason:string;actions:EditorAction[];valid:boolean;validationErrors:string[]};
 export type AiDesignResult={id:string;summary:string;suggestions:ValidatedSuggestion[]};
 export type ManufacturingIssue={id:string;ruleId:string;severity:'INFO'|'WARNING'|'ERROR';componentIds:string[];message:string;measuredValue?:number;expectedRange?:{min?:number;max?:number};suggestedActions?:EditorAction[]};
+export type ManufacturingCheckResult={id:string;status:string;issues:ManufacturingIssue[];geometryJson?:Record<string,unknown>|null};
 
 export async function createMultiViewRender(projectId:string,configuration:ModelConfiguration){
   const exported=await queueExport(projectId,configuration);
@@ -23,5 +24,22 @@ export async function requestDesignSuggestions(projectId:string,configuration:Mo
 }
 
 export async function runManufacturingCheck(projectId:string,configuration:ModelConfiguration){
-  return request<{id:string;status:string;issues:ManufacturingIssue[]}>(`${root()}/projects/${projectId}/manufacturability/check`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({configurationJson:configuration})});
+  return request<ManufacturingCheckResult>(`${root()}/projects/${projectId}/manufacturability/check`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({configurationJson:configuration})});
+}
+
+export async function runGeometryManufacturingCheck(projectId:string,configuration:ModelConfiguration){
+  const deterministic=await runManufacturingCheck(projectId,configuration);
+  const exported=await queueExport(projectId,configuration);
+  await waitForJob(exported.jobId);
+  const queued=await request<{jobId:string;checkId:string}>(`${root()}/projects/${projectId}/manufacturability/geometry`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({manufacturingCheckId:deterministic.id,exportJobId:exported.jobId})});
+  await waitForJob(queued.jobId);
+  return request<ManufacturingCheckResult>(`${root()}/projects/${projectId}/manufacturability/checks/${queued.checkId}`);
+}
+
+export async function createLifestyleVisualization(projectId:string,configuration:ModelConfiguration,prompt:string){
+  const renderJobId=await createMultiViewRender(projectId,configuration);
+  const queued=await request<{id:string;jobId:string;status:string}>(`${root()}/projects/${projectId}/ai/visualizations`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({renderJobId,prompt})});
+  await waitForJob(queued.jobId);
+  const artifact=await getJobArtifact(queued.jobId);
+  return{id:queued.id,url:artifact.url,filename:artifact.filename};
 }
