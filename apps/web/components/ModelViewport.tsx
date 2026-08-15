@@ -9,10 +9,18 @@ import {demoMaterials} from '../lib/materials';
 
 const EMPTY_TRANSFORM:TransformState={position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};
 
+type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
+
 function stablePath(object:THREE.Object3D){
   const names:string[]=[]; let current:THREE.Object3D|null=object;
   while(current){const index=current.parent?current.parent.children.indexOf(current):0;names.push(`${current.name||current.type}[${index}]`);current=current.parent;}
   return names.reverse().join('/');
+}
+
+function captureMaterial(material:THREE.Material):BaseMaterialState{
+  return material instanceof THREE.MeshStandardMaterial
+    ? {color:material.color.getHexString(),roughness:material.roughness,metalness:material.metalness}
+    : null;
 }
 
 function prepareScene(scene:THREE.Object3D,modelId:string){
@@ -30,7 +38,13 @@ function prepareScene(scene:THREE.Object3D,modelId:string){
     object.userData.__baseScale=object.scale.toArray();
     object.userData.__basePosition=object.position.toArray();
     object.userData.__baseRotation=[object.rotation.x,object.rotation.y,object.rotation.z];
-    if(Array.isArray(object.material)){object.material=object.material.map(material=>material.clone());object.userData.__baseMaterials=object.material.map(material=>material instanceof THREE.MeshStandardMaterial?{color:material.color.getHexString(),roughness:material.roughness,metalness:material.metalness}:null);}else{object.material=object.material.clone();object.userData.__baseMaterials=[object.material instanceof THREE.MeshStandardMaterial?{color:object.material.color.getHexString(),roughness:object.material.roughness,metalness:object.material.metalness}:null];}
+    if(Array.isArray(object.material)){
+      object.material=object.material.map((material:THREE.Material)=>material.clone());
+      object.userData.__baseMaterials=object.material.map((material:THREE.Material)=>captureMaterial(material));
+    }else{
+      object.material=object.material.clone();
+      object.userData.__baseMaterials=[captureMaterial(object.material)];
+    }
     const box=new THREE.Box3().setFromObject(object);
     const size=new THREE.Vector3();box.getSize(size);
     const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};
@@ -67,8 +81,8 @@ function LoadedModel({url}:{url:string}){
       object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);
       object.visible=state.visible&&!state.deleted;
       const materialPreset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined;
-      const materials=Array.isArray(object.material)?object.material:[object.material];
-      const baseMaterials=object.userData.__baseMaterials as Array<{color:string;roughness:number;metalness:number}|null>;
+      const materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material];
+      const baseMaterials=object.userData.__baseMaterials as BaseMaterialState[];
       for(const [materialIndex,material] of materials.entries()){
         if(!(material instanceof THREE.MeshStandardMaterial))continue;
         const baseMaterial=baseMaterials?.[materialIndex];
@@ -76,7 +90,7 @@ function LoadedModel({url}:{url:string}){
         if(materialPreset?.baseColor)material.color.set(materialPreset.baseColor);
         if(materialPreset){material.roughness=materialPreset.roughness;material.metalness=materialPreset.metalness;}
         if(state.color)material.color.set(state.color);
-        material.emissive.set(componentId===selected?'#1e4f85':'#000000');material.emissiveIntensity=componentId===selected ? .18 : 0;
+        material.emissive.set(componentId===selected?'#1e4f85':'#000000');material.emissiveIntensity=componentId===selected?.18:0;
       }
     });
   },[configuration,manifest,prepared.scene,selected]);
