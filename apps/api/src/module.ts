@@ -1,9 +1,12 @@
 import {Controller,Get,Module} from '@nestjs/common';
+import {AiController} from './ai/ai.controller';
+import {AiProviderService} from './ai/ai-provider.service';
 import {AssetController} from './assets/asset.controller';
 import {AuthController} from './auth/auth.controller';
 import {SupabaseAuthGuard} from './auth/auth.service';
 import {CatalogController} from './catalog/catalog.controller';
 import {JobController} from './jobs/job.controller';
+import {ManufacturingController} from './manufacturing/manufacturing.controller';
 import {PrismaService} from './prisma/prisma.service';
 import {ProjectController} from './projects/project.controller';
 import {AssetQueueService} from './queue/asset-queue.service';
@@ -22,7 +25,7 @@ class MaterialController{
 }
 
 @Module({
-  controllers:[HealthController,AuthController,AssetController,CatalogController,JobController,ProjectController,MaterialController,RenderController],
-  providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,SupabaseAuthGuard],
+  controllers:[HealthController,AuthController,AssetController,CatalogController,JobController,ProjectController,MaterialController,RenderController,AiController,ManufacturingController],
+  providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,SupabaseAuthGuard,AiProviderService],
 })
 export class AppModule{}
