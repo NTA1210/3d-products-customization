@@ -8,6 +8,7 @@ describe('required GLB fixtures',()=>{
   for(const name of fixtures)it(`${name} is valid GLB`,async()=>{
     const bytes=new Uint8Array(await readFile(new URL(`../examples/fixtures/${name}`,import.meta.url)));
     const report=await validator.validateBytes(bytes,{uri:name,format:'glb'});
+    if(report.issues.numErrors)console.error(name,JSON.stringify(report.issues.messages,null,2));
     expect(report.issues.numErrors).toBe(0);
   });
 });
