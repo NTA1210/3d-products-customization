@@ -1,8 +1,8 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, prune } from '@gltf-transform/functions';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { createClient } from '@supabase/supabase-js';
 import { Job as BullJob, Worker } from 'bullmq';
 import * as draco3d from 'draco3dgltf';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
@@ -41,35 +41,24 @@ function redisConnection() {
   };
 }
 
-function storageClient() {
-  const accessKeyId = process.env.S3_ACCESS_KEY;
-  const secretAccessKey = process.env.S3_SECRET_KEY;
-  return new S3Client({
-    region: requiredEnv('S3_REGION', 'us-east-1'),
-    endpoint: process.env.S3_ENDPOINT,
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE ? process.env.S3_FORCE_PATH_STYLE === 'true' : Boolean(process.env.S3_ENDPOINT),
-    credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
-  });
-}
-
-const s3 = storageClient();
-const bucket = requiredEnv('S3_BUCKET', 'product3d');
+const supabase = createClient(requiredEnv('SUPABASE_URL'), requiredEnv('SUPABASE_SECRET_KEY'), {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+});
+const bucket = requiredEnv('SUPABASE_STORAGE_BUCKET', 'product3d');
 
 async function downloadObject(key: string) {
-  const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!response.Body) throw new Error(`Object ${key} has an empty response body.`);
-  return response.Body.transformToByteArray();
+  const { data, error } = await supabase.storage.from(bucket).download(key);
+  if (error || !data) throw error ?? new Error(`Supabase object ${key} has an empty response body.`);
+  return new Uint8Array(await data.arrayBuffer());
 }
 
 async function uploadObject(key: string, bytes: Uint8Array) {
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: bytes,
-      ContentType: 'model/gltf-binary',
-    }),
-  );
+  const { error } = await supabase.storage.from(bucket).upload(key, bytes, {
+    contentType: 'model/gltf-binary',
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
 }
 
 async function validateGlb(bytes: Uint8Array, uri: string) {
@@ -82,10 +71,7 @@ async function validateGlb(bytes: Uint8Array, uri: string) {
 
 async function createNodeIo() {
   await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready]);
-  const [decoder, encoder] = await Promise.all([
-    draco3d.createDecoderModule(),
-    draco3d.createEncoderModule(),
-  ]);
+  const [decoder, encoder] = await Promise.all([draco3d.createDecoderModule(), draco3d.createEncoderModule()]);
   return new NodeIO()
     .registerExtensions(ALL_EXTENSIONS)
     .registerDependencies({
@@ -169,7 +155,7 @@ async function processAsset(job: BullJob<AssetProcessingJobData>) {
         data: {
           status: 'READY',
           normalizedObjectKey,
-          normalizedGlbUrl: `s3://${bucket}/${normalizedObjectKey}`,
+          normalizedGlbUrl: `supabase://${bucket}/${normalizedObjectKey}`,
           validationJson: sourceReport as unknown as Prisma.InputJsonValue,
         },
       }),
@@ -178,21 +164,14 @@ async function processAsset(job: BullJob<AssetProcessingJobData>) {
         data: { status: 'COMPLETED', result, failureReason: null },
       }),
     ]);
-
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const maxAttempts = job.opts.attempts ?? 1;
     const willRetry = job.attemptsMade + 1 < maxAttempts;
     await prisma.$transaction([
-      prisma.job.update({
-        where: { id: databaseJobId },
-        data: { status: willRetry ? 'RETRYING' : 'FAILED', failureReason: message },
-      }),
-      prisma.modelAsset.update({
-        where: { id: assetId },
-        data: { status: willRetry ? 'QUEUED' : 'FAILED' },
-      }),
+      prisma.job.update({ where: { id: databaseJobId }, data: { status: willRetry ? 'RETRYING' : 'FAILED', failureReason: message } }),
+      prisma.modelAsset.update({ where: { id: assetId }, data: { status: willRetry ? 'QUEUED' : 'FAILED' } }),
     ]);
     throw error;
   }
@@ -203,13 +182,8 @@ const worker = new Worker<AssetProcessingJobData>(QUEUE_NAME, processAsset, {
   concurrency: Number(process.env.ASSET_WORKER_CONCURRENCY ?? 2),
 });
 
-worker.on('completed', (job) => {
-  console.info(`[asset-worker] completed ${job.id}`);
-});
-
-worker.on('failed', (job, error) => {
-  console.error(`[asset-worker] failed ${job?.id ?? 'unknown'}: ${error.message}`);
-});
+worker.on('completed', (job) => console.info(`[asset-worker] completed ${job.id}`));
+worker.on('failed', (job, error) => console.error(`[asset-worker] failed ${job?.id ?? 'unknown'}: ${error.message}`));
 
 async function shutdown(signal: string) {
   console.info(`[asset-worker] ${signal}: shutting down`);
@@ -217,8 +191,6 @@ async function shutdown(signal: string) {
   await prisma.$disconnect();
   process.exit(0);
 }
-
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
-
 console.info(`[asset-worker] listening on queue ${QUEUE_NAME}`);
