@@ -1,0 +1,1 @@
+declare module 'gltf-validator'{export type ValidationReport={issues:{numErrors:number;numWarnings:number;numInfos:number;numHints:number}};const validator:{validateBytes(bytes:Uint8Array,options?:{uri?:string;format?:string;maxIssues?:number}):Promise<ValidationReport>};export default validator;}
