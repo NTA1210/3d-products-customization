@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  projects  Project[]
+  createdAt DateTime  @default(now())
+}
+
+model ModelAsset {
+  id                String          @id @default(cuid())
+  name              String
+  originalFilename  String
+  sourceUrl         String?
+  normalizedGlbUrl  String?
+  thumbnailUrl      String?
+  status            String          @default("UPLOADED")
+  unit              String          @default("mm")
+  manifests         ModelManifest[]
+  projects          Project[]
+  createdAt         DateTime        @default(now())
+}
+
+model ModelManifest {
+  id           String     @id @default(cuid())
+  modelAssetId String
+  version      Int
+  manifestJson Json
+  modelAsset   ModelAsset @relation(fields: [modelAssetId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@unique([modelAssetId, version])
+}
+
+model Project {
+  id              String         @id @default(cuid())
+  userId          String
+  modelAssetId    String
+  name            String
+  activeVersionId String?
+  user            User           @relation(fields: [userId], references: [id])
+  modelAsset      ModelAsset     @relation(fields: [modelAssetId], references: [id])
+  versions        ModelVersion[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model ModelVersion {
+  id                String   @id @default(cuid())
+  projectId         String
+  name              String
+  configurationJson Json
+  previewUrl        String?
+  project           Project  @relation(fields: [projectId], references: [id])
+  createdAt         DateTime @default(now())
+}
+
+model MaterialPreset {
+  id             String   @id
+  name           String
+  category       String
+  propertiesJson Json
+  styleTags      String[]
+  active         Boolean  @default(true)
+}
+
+model ComponentVariant {
+  id                String @id
+  groupId           String
+  role              String
+  name              String
+  assetUrl          String
+  compatibilityJson Json
+  metadataJson      Json
+}
+
+model ManufacturingRule {
+  id       String  @id
+  name     String
+  type     String
+  severity String
+  ruleJson Json
+  active   Boolean @default(true)
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  type      String
+  status    String
+  payload   Json
+  result    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

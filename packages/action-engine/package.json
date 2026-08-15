@@ -1,0 +1,1 @@
+{"name":"@product3d/action-engine","version":"0.2.0","type":"module","main":"src/index.ts","dependencies":{"zod":"^3.23.8","@product3d/model-schema":"workspace:*"}}
