@@ -5,12 +5,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AssetQueueService } from '../queue/asset-queue.service';
 import { StorageService } from '../storage/storage.service';
 
-const MAX_ASSET_BYTES = 250 * 1024 * 1024;
+const DEFAULT_MAX_ASSET_BYTES = 250 * 1024 * 1024;
+const maxAssetBytes = Number(process.env.ASSET_MAX_UPLOAD_BYTES ?? DEFAULT_MAX_ASSET_BYTES);
 const ImportAssetSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   originalFilename: z.string().trim().min(1).max(255),
   contentType: z.string().trim().min(1).max(120).default('model/gltf-binary'),
-  sizeBytes: z.number().int().positive().max(MAX_ASSET_BYTES).optional(),
+  sizeBytes: z.number().int().positive().max(maxAssetBytes).optional(),
 });
 
 function safeFilename(filename: string) {
@@ -34,6 +35,9 @@ export class AssetController {
     if (!input.originalFilename.toLowerCase().endsWith('.glb')) {
       throw new BadRequestException('Phase 1 production upload currently accepts .glb files only.');
     }
+    if (input.contentType !== 'model/gltf-binary' && input.contentType !== 'application/octet-stream') {
+      throw new BadRequestException('Unsupported MIME type for GLB upload.');
+    }
 
     const id = randomUUID();
     const sourceObjectKey = `assets/${id}/source/${safeFilename(input.originalFilename)}`;
@@ -56,7 +60,7 @@ export class AssetController {
         method: 'PUT',
         url: uploadUrl,
         headers: { 'content-type': input.contentType },
-        expiresInSeconds: 900,
+        expiresInSeconds: 7200,
       },
     };
   }
@@ -76,7 +80,7 @@ export class AssetController {
     try {
       await this.storage.assertObjectExists(asset.sourceObjectKey);
     } catch {
-      throw new BadRequestException('Uploaded GLB was not found in object storage. Complete the signed PUT upload first.');
+      throw new BadRequestException('Uploaded GLB was not found in Supabase Storage. Complete the signed upload first.');
     }
 
     const databaseJob = await this.db.job.create({
