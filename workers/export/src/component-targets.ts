@@ -59,9 +59,12 @@ function isolatedMesh(doc:Document,nodeIndex:number){
   if(!node)throw new Error(`Source node ${nodeIndex} missing`);
   const original=node.getMesh();
   if(!original)throw new Error(`Source node ${nodeIndex} has no mesh`);
+  const sourcePrimitives=[...original.listPrimitives()];
+  // Mesh.copy() intentionally copies the RefSet. Detach those refs without disposing them,
+  // otherwise the source primitive itself is destroyed before region/primitive isolation.
   const mesh=doc.createMesh(`${original.getName()} Export`).copy(original);
-  mesh.listPrimitives().forEach(primitive=>primitive.dispose());
-  original.listPrimitives().forEach(primitive=>mesh.addPrimitive(clonePrimitive(doc,primitive)));
+  for(const primitive of [...mesh.listPrimitives()])mesh.removePrimitive(primitive);
+  for(const primitive of sourcePrimitives)mesh.addPrimitive(clonePrimitive(doc,primitive));
   node.setMesh(mesh);
   return mesh;
 }
