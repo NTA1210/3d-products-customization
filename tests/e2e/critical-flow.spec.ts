@@ -6,7 +6,7 @@ const authUser={id:'00000000-0000-4000-8000-000000000001',aud:'authenticated',ro
 const session={access_token:'e2e-access-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,refresh_token:'e2e-refresh-token',user:authUser};
 const analysis={version:1 as const,unitScaleToMm:1000,stats:{nodes:8,meshes:6,primitives:6,triangles:72,materials:1,textures:0},meshes:[],componentCandidates:[],warnings:[{code:'ROOT_SCALE_NON_IDENTITY',severity:'INFO' as const,message:'Root scale review note.',sourceId:'node_0000'},{code:'DUPLICATE_NAME',severity:'INFO' as const,message:'Duplicate display-name note.'}]};
 
-test('Import → prepare → lock → customize → undo/redo → save version → export GLB',async({page})=>{
+test('Import → prepare → select on model → lock → customize → undo/redo → save version → export GLB',async({page})=>{
   let versionPosts=0;
   let exportQueued=false;
   let artifactRequested=false;
@@ -66,6 +66,16 @@ test('Import → prepare → lock → customize → undo/redo → save version �
   await glbInput.setInputFiles(path.resolve('examples/fixtures/proper-components.glb'));
   await expect(page.getByText('Asset Preparation')).toBeVisible();
   await expect(page.locator('.component-card').first()).toBeVisible();
+
+  const firstComponentName=(await page.locator('.component-card').first().locator('span').innerText()).trim();
+  await expect(page.locator('.viewer').getByText(firstComponentName,{exact:true})).toBeVisible();
+  const secondComponent=page.locator('.component-card').nth(1);
+  const secondComponentName=(await secondComponent.locator('span').innerText()).trim();
+  await secondComponent.click();
+  await expect(page.locator('.viewer').getByText(secondComponentName,{exact:true})).toBeVisible();
+  await page.locator('.component-card').first().click();
+  await expect(page.locator('.viewer').getByText(firstComponentName,{exact:true})).toBeVisible();
+
   await expect(page.getByText(/2 non-blocking model note\(s\) hidden/)).toBeVisible();
   await expect(page.getByText('Root scale review note.')).toHaveCount(0);
   await expect(page.getByText('Duplicate display-name note.')).toHaveCount(0);
