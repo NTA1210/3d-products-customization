@@ -1,19 +1,19 @@
-# Architecture
+# Kiến trúc hệ thống
 
-## Source of truth
+## Nguồn dữ liệu chuẩn
 
-- **Original GLB** — immutable customer asset in private Supabase Storage.
-- **Normalized GLB** — validated/normalized derivative; never overwrites the source.
-- **Manifest** — stable component/rule definition produced by Asset Preparation.
-- **Configuration** — current serializable customization state.
-- **ModelVersion** — persisted configuration snapshot, not a duplicate source model.
-- **Runtime Three.js scene** — projection of asset + manifest + configuration only.
-- **Export artifacts** — generated outputs from immutable source + current/saved configuration.
-- **Render/AI artifacts** — separate private derivatives referenced by object keys.
+- **Original GLB** — asset khách hàng bất biến trong Supabase Storage riêng tư.
+- **Normalized GLB** — bản dẫn xuất đã được kiểm tra/normalize; không bao giờ ghi đè source.
+- **Manifest** — định nghĩa component/rule ổn định được tạo từ Asset Preparation.
+- **Configuration** — trạng thái tùy chỉnh hiện tại có thể serialize.
+- **ModelVersion** — snapshot configuration được lưu, không phải bản sao của source GLB.
+- **Runtime Three.js scene** — chỉ là projection của asset + manifest + configuration.
+- **Export artifact** — output được sinh từ source bất biến + configuration hiện tại/đã lưu.
+- **Render/AI artifact** — các bản dẫn xuất private riêng, được tham chiếu bằng object key.
 
-Expiring signed URLs are transport credentials, not business state. PostgreSQL stores object keys/resource IDs; APIs mint short-lived signed URLs when a client needs an artifact.
+Signed URL hết hạn là thông tin xác thực vận chuyển dữ liệu, không phải business state. PostgreSQL lưu object key/resource ID; API tạo signed URL có thời hạn ngắn khi client cần artifact.
 
-## Mutation pipeline
+## Pipeline thay đổi trạng thái
 
 ```text
 Manual / Preset / Style / AI
@@ -28,9 +28,9 @@ Manual / Preset / Style / AI
   → History / ModelVersion
 ```
 
-Manual controls, style/preset rules and validated AI suggestions all use the same action shapes and editor core. AI does not mutate the Three.js scene directly and does not generate the canonical 3D model.
+Điều khiển thủ công, rule style/preset và đề xuất AI đã được kiểm tra đều sử dụng cùng action shape và editor core. AI không thay đổi trực tiếp Three.js scene và không sinh canonical 3D model.
 
-## Asset workflow
+## Luồng asset
 
 ```text
 Supabase Auth
@@ -52,19 +52,19 @@ Supabase Auth
   → Customize
 ```
 
-Stable component candidates use glTF node/mesh/primitive source indices, never mesh names as the sole business ID. Connectivity regions are **geometry candidates only** and remain semantically unconfirmed until Asset Preparation.
+Stable component candidate sử dụng source index của glTF node/mesh/primitive, không dùng mesh name làm business ID duy nhất. Các region theo connectivity chỉ là **geometry candidate** và vẫn chưa được xác nhận semantic cho đến bước Asset Preparation.
 
-## Storage and identity
+## Storage và danh tính
 
-Supabase is used for:
+Supabase được sử dụng cho:
 
-- Auth identity/session tokens.
-- private source/normalized/export/render/AI/variant Storage artifacts.
-- signed upload/download grants.
+- Danh tính/session token qua Auth.
+- Source/normalized/export/render/AI/variant artifact private trên Storage.
+- Signed upload/download grant.
 
-The browser receives only the publishable key plus temporary signed grants. `SUPABASE_SECRET_KEY` stays in API/workers.
+Trình duyệt chỉ nhận publishable key và signed grant tạm thời. `SUPABASE_SECRET_KEY` chỉ tồn tại ở API/worker.
 
-Storage object keys follow capability namespaces such as:
+Storage object key dùng các namespace theo capability như:
 
 - `assets/<assetId>/source/...`
 - `assets/<assetId>/normalized/model.glb`
@@ -73,7 +73,7 @@ Storage object keys follow capability namespaces such as:
 - `renders/<projectId>/<renderJobId>/...`
 - `ai-visualizations/<userId>/<projectId>/...`
 
-## Background jobs
+## Background job
 
 ```text
 API
@@ -85,17 +85,17 @@ Capability worker
 Supabase Storage + PostgreSQL Job/result state
 ```
 
-Long-running capabilities are separated into workers:
+Các capability chạy dài được tách thành worker:
 
 - `asset-processing` — validation/analysis/normalization.
-- `export` — customized GLB baking, variant composition, OBJ/STL derived conversion.
-- `render` — Blender multi-view and spin-360.
-- `geometry` — Trimesh manufacturability facts/issues.
-- `ai-visualization` — queued server-side product-reference image generation.
+- `export` — bake customized GLB, ghép variant và chuyển đổi OBJ/STL.
+- `render` — Blender multi-view và spin-360.
+- `geometry` — dữ kiện/issue khả năng sản xuất bằng Trimesh.
+- `ai-visualization` — tạo lifestyle image qua hàng đợi phía server.
 
-The API is the queue producer and persists `QUEUED/PROCESSING/RETRYING/COMPLETED/FAILED` state. Workers update the same database Job record and store artifact keys/results separately.
+API là queue producer và lưu trạng thái `QUEUED/PROCESSING/RETRYING/COMPLETED/FAILED`. Worker cập nhật cùng bản ghi Job trong database và lưu object key/kết quả artifact riêng.
 
-## Export pipeline
+## Pipeline export
 
 Canonical export:
 
@@ -114,39 +114,39 @@ immutable source GLB
   → private Supabase export artifact
 ```
 
-OBJ/STL are derived **after** the customized GLB is baked/validated, so they do not introduce another business-state path. Because GLB/glTF linear units are meters while OBJ/STL lack a reliable unit field, derived manufacturing coordinates are exported in platform-canonical millimeters.
+OBJ/STL được suy ra **sau khi** customized GLB đã được bake/kiểm tra, vì vậy không tạo thêm một đường business state khác. Do GLB/glTF dùng đơn vị tuyến tính là meter trong khi OBJ/STL không có trường unit đáng tin cậy, tọa độ manufacturing dẫn xuất được export theo millimeter chuẩn của platform.
 
 ## Render / AI / manufacturing
 
-- Render jobs require a completed GLB export owned by the same project/user.
-- AI Design Suggest requires current configuration + a completed project multi-view render and receives only valid catalog IDs/rules. Structured provider output is validated again before it becomes applicable editor actions.
-- Lifestyle visualization uses a current render as product reference and creates a separate PNG artifact; it does not alter canonical model state.
-- Deterministic manufacturing rules evaluate manifest/configuration/material metadata.
-- Geometry manufacturing analysis runs against the **customized exported GLB**, not source geometry.
+- Render job yêu cầu completed GLB export thuộc cùng project/user.
+- AI Design Suggest yêu cầu configuration hiện tại + completed project multi-view render và chỉ nhận các catalog ID/rule hợp lệ. Structured provider output được kiểm tra lại trước khi trở thành editor action có thể áp dụng.
+- Lifestyle visualization dùng current render làm product reference và tạo PNG artifact riêng; nó không thay đổi canonical model state.
+- Deterministic manufacturing rule đánh giá manifest/configuration/material metadata.
+- Geometry manufacturing analysis chạy trên **customized exported GLB**, không phải source geometry.
 
-## Collection and RFQ
+## Collection và RFQ
 
-Collection recommendation is a deterministic domain engine using the specification weighting:
+Collection recommendation là deterministic domain engine sử dụng trọng số theo specification:
 
-`50% style + 25% material + 15% color + 10% other metadata`.
+`50% style + 25% material + 15% color + 10% metadata khác`.
 
-RFQ state references a real saved ModelVersion and verified current-project export, with optional verified render/manufacturing resources. The canonical payload stores object keys/IDs; fresh signed preview/export URLs are generated for reads.
+RFQ state tham chiếu một ModelVersion đã lưu thực tế và export hiện tại của project đã được xác minh, cùng render/manufacturing resource tùy chọn đã xác minh. Canonical payload lưu object key/ID; signed preview/export URL mới được sinh khi đọc.
 
-## Frontend state and GPU lifecycle
+## Frontend state và vòng đời GPU
 
-Zustand stores serializable editor state only. Three.js objects are not persisted as business state.
+Zustand chỉ lưu editor state có thể serialize. Object Three.js không được lưu làm business state.
 
-Runtime viewer resources are cloned/owned by the projection layer and explicitly dispose geometry/material/texture resources when models/variants are replaced or unloaded. Drei GLTF cache and the variant cache are cleared during teardown to reduce GPU-memory accumulation.
+Các resource viewer ở runtime được clone/sở hữu bởi projection layer và chủ động dispose geometry/material/texture khi model/variant bị thay hoặc unload. Cache GLTF của Drei và cache variant được clear khi teardown để giảm tích lũy GPU memory.
 
-## Security boundaries
+## Ranh giới bảo mật
 
-- Authenticated ownership is checked for project/version/export/render/manufacturing/RFQ resources.
-- Source asset remains immutable.
-- AI/provider secrets and Supabase service secret remain server-side.
-- Uploaded GLB content is validated; glTF extension content is data, not executable application code.
-- No arbitrary `eval` is used for dependency/manufacturing formulas.
-- AI output is schema/catalog/rule validated before editor application.
+- Quyền sở hữu có xác thực được kiểm tra cho tài nguyên project/version/export/render/manufacturing/RFQ.
+- Source asset luôn bất biến.
+- AI/provider secret và Supabase service secret chỉ tồn tại phía server.
+- GLB upload được kiểm tra; nội dung glTF extension chỉ là dữ liệu, không phải executable application code.
+- Không dùng `eval` tùy ý cho công thức dependency/manufacturing.
+- AI output được kiểm tra theo schema/catalog/rule trước khi áp dụng trong editor.
 
-## Validation boundary
+## Ranh giới kiểm chứng
 
-Repository CI validates TypeScript builds, Prisma generation, Python worker syntax, domain/integration tests and required GLB fixtures. Live external/native-system E2E evidence (Supabase, Redis workers, Blender, OpenAI, device AR and full export→re-import round trip) is tracked separately in `PHASE1_GAP_AUDIT.md` rather than being implied by compilation alone.
+CI của repository kiểm tra TypeScript build, Prisma generation, syntax Python worker, domain/integration test và các GLB fixture bắt buộc. Bằng chứng E2E cho external/native system thật (Supabase, Redis worker, Blender, OpenAI, device AR và round trip export→re-import đầy đủ) được theo dõi riêng trong `PHASE1_GAP_AUDIT.md` thay vì ngầm coi compilation là đủ.
