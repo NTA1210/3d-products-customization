@@ -112,7 +112,7 @@ test('Import → prepare → select on model → lock → customize → undo/red
   await width.fill(changedWidth);
   await expect(width).toHaveValue(changedWidth);
   await expect(page.getByLabel('WIDTH slider')).toBeEnabled();
-  await expect(page.getByLabel('Component color')).toBeEnabled();
+  await expect(page.getByLabel('Component color',{exact:true})).toBeEnabled();
 
   const material=page.locator('label:has-text("Material") + select');
   await material.selectOption('mat_oak_light');
@@ -177,5 +177,5 @@ test('single-mesh disconnected geometry becomes separate preparation components'
   await expect(page.getByRole('button',{name:'Rotate'}).last()).toBeEnabled();
   await expect(page.getByRole('button',{name:'Resize'})).toBeEnabled();
   await expect(page.getByLabel('WIDTH slider')).toBeEnabled();
-  await expect(page.getByLabel('Component color')).toBeEnabled();
+  await expect(page.getByLabel('Component color',{exact:true})).toBeEnabled();
 });
