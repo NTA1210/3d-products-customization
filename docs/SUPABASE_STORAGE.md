@@ -24,4 +24,14 @@ Không bao giờ đưa secret key vào biến có tiền tố `NEXT_PUBLIC_` ho�
 Signed upload grant có thời hạn. Đường dẫn source là duy nhất cho từng asset và không bị ghi đè.
 
 ## 4. Phát triển local
-`docker compose up -d` chỉ khởi động PostgreSQL và Redis. Storage vẫn sử dụng Supabase project được cấu hình để môi trường development và worker khi deploy cùng tuân theo một object-storage contract.
+
+Database, Auth và Storage đều dùng Supabase project được cấu hình. `docker compose up -d` hiện chỉ khởi động Redis local cho BullMQ.
+
+```text
+Supabase Database  ← Prisma / DATABASE_URL
+Supabase Auth      ← session người dùng
+Supabase Storage   ← GLB + artifact private
+Redis local        ← BullMQ queue
+```
+
+Xem [SUPABASE_DATABASE.md](SUPABASE_DATABASE.md) để cấu hình connection string cho Prisma.
