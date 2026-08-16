@@ -1,7 +1,8 @@
 import {Prisma,PrismaClient} from '@prisma/client';
 import {createClient} from '@supabase/supabase-js';
-import {readFile} from 'node:fs/promises';
-import {resolve} from 'node:path';
+import {readFile} from 'fs/promises';
+import {resolve} from 'path';
+import process from 'process';
 
 const db=new PrismaClient();
 
