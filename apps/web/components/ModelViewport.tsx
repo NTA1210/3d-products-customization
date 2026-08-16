@@ -8,6 +8,7 @@ import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type {ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
 import {useEditorStore} from '../lib/store';
 import {demoMaterials} from '../lib/materials';
+import {reportViewerLoad} from '../lib/metrics';
 
 const EMPTY_TRANSFORM:TransformState={position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};
 type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
@@ -47,14 +48,15 @@ function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssoci
 async function variantScene(url:string){let cached=variantCache.get(url);if(!cached){cached=new GLTFLoader().loadAsync(url).then(gltf=>gltf.scene);variantCache.set(url,cached);}return cloneOwnedScene(await cached);}
 function highlight(root:THREE.Object3D,selected?:string){root.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;for(const material of Array.isArray(object.material)?object.material:[object.material])if(material instanceof THREE.MeshStandardMaterial){material.emissive.set(id===selected?'#1e4f85':'#000000');material.emissiveIntensity=id===selected?.18:0;}});}
 
-function LoadedModel({url}:{url:string}){
+function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const gltf=useGLTF(url);const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,variants}=useEditorStore();
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
   const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;
   const prepared=useMemo(()=>prepare(gltf.scene,associations,modelId),[gltf.scene,associations,modelId]);
-  const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]);
+  const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]),loadReported=useRef(false);
 
   useEffect(()=>setPreparedAsset(prepared.manifest,prepared.configuration),[prepared,setPreparedAsset]);
+  useEffect(()=>{if(loadReported.current||loadStartedAt<=0)return;loadReported.current=true;void reportViewerLoad(performance.now()-loadStartedAt);},[loadStartedAt]);
   useEffect(()=>()=>disposeObject3D(prepared.scene),[prepared.scene]);
   useEffect(()=>()=>{disposeObject3D(gltf.scene);useGLTF.clear(url);clearVariantCache();},[gltf.scene,url]);
 
@@ -69,4 +71,4 @@ function LoadedModel({url}:{url:string}){
   return model;
 }
 
-export default function ModelViewport(){const assetUrl=useEditorStore(state=>state.assetUrl);return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[3.8,2.8,4.8],fov:42}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><Grid args={[20,20]} infiniteGrid fadeDistance={25}/><OrbitControls makeDefault/>{assetUrl?<Suspense fallback={null}><LoadedModel url={assetUrl}/></Suspense>:null}</Canvas>;}
+export default function ModelViewport(){const assetUrl=useEditorStore(state=>state.assetUrl);const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[3.8,2.8,4.8],fov:42}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><Grid args={[20,20]} infiniteGrid fadeDistance={25}/><OrbitControls makeDefault/>{assetUrl?<Suspense fallback={null}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Suspense>:null}</Canvas>;}
