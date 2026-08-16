@@ -1,20 +1,20 @@
-# 06 - Workers & Pipelines
+# 06 - Worker và pipeline
 
 Các tác vụ dài của hệ thống chạy qua Redis/BullMQ. Mỗi worker là một process độc lập và có thể scale riêng.
 
-## 1. Worker list
+## 1. Danh sách worker
 
-| Worker | Package | Nhiệm vụ chính | Native/runtime dependency |
+| Worker | Package | Nhiệm vụ chính | Dependency native/runtime |
 |---|---|---|---|
 | Asset Processing | `@product3d/asset-processing-worker` | Validate/analyze/normalize GLB | Node, Draco, Meshopt, Khronos validator |
-| Export | `@product3d/export-worker` | Bake customized GLB, variant composition, OBJ/STL | Node; Python cho OBJ/STL |
+| Export | `@product3d/export-worker` | Bake customized GLB, ghép variant, OBJ/STL | Node; Python cho OBJ/STL |
 | Render | `@product3d/render-worker` | Multi-view / spin-360 | Blender |
-| Geometry | `@product3d/geometry-worker` | Trimesh geometry facts/issues | Python + numpy/trimesh/networkx |
-| AI Visualization | `@product3d/ai-visualization-worker` | Lifestyle visualization queue | OpenAI + Supabase |
+| Geometry | `@product3d/geometry-worker` | Dữ kiện/issue geometry bằng Trimesh | Python + numpy/trimesh/networkx |
+| AI Visualization | `@product3d/ai-visualization-worker` | Hàng đợi lifestyle visualization | OpenAI + Supabase |
 
-## 2. Common infrastructure
+## 2. Hạ tầng dùng chung
 
-Workers dùng:
+Worker sử dụng:
 
 ```env
 DATABASE_URL=...
@@ -24,9 +24,9 @@ SUPABASE_SECRET_KEY=...
 SUPABASE_STORAGE_BUCKET=product3d
 ```
 
-Mỗi worker nhận BullMQ job payload, cập nhật `Job` record trong PostgreSQL và ghi output artifact vào Supabase khi cần.
+Mỗi worker nhận BullMQ job payload, cập nhật bản ghi `Job` trong PostgreSQL và ghi output artifact vào Supabase khi cần.
 
-## 3. Chạy worker ở dev
+## 3. Chạy worker ở môi trường phát triển
 
 Asset:
 
@@ -58,7 +58,7 @@ AI visualization:
 pnpm --filter @product3d/ai-visualization-worker dev
 ```
 
-Build + start production của từng package:
+Build + start production cho từng package:
 
 ```bash
 pnpm --filter <package-name> build
@@ -79,17 +79,17 @@ Pipeline:
 source GLB từ Supabase
 → Khronos validation
 → source-index analysis
-→ mesh / primitive / disconnected island candidates
-→ quality warnings
+→ mesh / primitive / disconnected island candidate
+→ cảnh báo chất lượng
 → glTF Transform normalize
 → Khronos validation lần 2
 → normalized GLB
-→ Supabase + PostgreSQL analysis
+→ Supabase + analysis trong PostgreSQL
 ```
 
-Hỗ trợ Draco/Meshopt ở load/transform boundary.
+Hỗ trợ Draco/Meshopt tại boundary load/transform.
 
-Không overwrite source GLB.
+Không ghi đè source GLB.
 
 ## 5. Export worker
 
@@ -100,25 +100,25 @@ workers/export/src/
 workers/export/convert.py
 ```
 
-Canonical flow:
+Luồng chuẩn:
 
 ```text
 source GLB
 + Manifest
 + Configuration
-+ materials
-+ component variants
-→ bake dimensions/transforms/material/color/visibility/delete
-→ composite variant replacement
-→ whole-model placement
++ material
++ component variant
+→ bake dimension/transform/material/color/visibility/delete
+→ ghép variant replacement
+→ đặt vị trí toàn bộ model
 → GLB
 → Khronos validate
 → private export artifact
 ```
 
-OBJ/STL được derive **sau** khi customized GLB đã bake.
+OBJ/STL được tạo **sau** khi customized GLB đã được bake.
 
-Cài Python conversion dependencies:
+Cài dependency Python cho bước chuyển đổi:
 
 ```bash
 python -m pip install -r workers/export/requirements.txt
@@ -141,12 +141,12 @@ BLENDER_BIN=blender
 
 Render job chỉ nên nhận completed GLB export của đúng user/project.
 
-Modes hiện tại:
+Các mode hiện tại:
 
 - `MULTI_VIEW`
 - `SPIN_360`
 
-Worker gọi Blender headless để tạo PNG frames rồi upload artifact.
+Worker gọi Blender headless để tạo PNG frame rồi upload artifact.
 
 ## 7. Geometry worker
 
@@ -157,30 +157,30 @@ workers/geometry/src/
 workers/geometry/analyze.py
 ```
 
-Cài:
+Cài đặt:
 
 ```bash
 python -m pip install -r workers/geometry/requirements.txt
 ```
 
-Python analyzer đọc **customized exported GLB**, không source model, và trả facts như:
+Python analyzer đọc **customized exported GLB**, không đọc source model, và trả các dữ kiện như:
 
-- vertex/face count.
-- disconnected body count.
-- watertight state.
+- số vertex/face.
+- số body rời rạc.
+- trạng thái watertight.
 - extents/bounds.
 - Euler number.
 - volume khi phù hợp.
 
-Nó cũng có thể sinh issue như `geometry:not-watertight` hoặc `geometry:multiple-bodies`.
+Nó cũng có thể tạo issue như `geometry:not-watertight` hoặc `geometry:multiple-bodies`.
 
-CI hiện chạy analyzer thật trên 4 GLB fixtures.
+CI hiện chạy analyzer thật trên 4 GLB fixture.
 
 ## 8. AI visualization worker
 
-Worker này xử lý lifestyle visualization server-side.
+Worker này xử lý lifestyle visualization ở phía server.
 
-Input phải tham chiếu render/current product artifact; output là derivative image riêng trong Supabase Storage. Nó **không** thay đổi canonical 3D state.
+Input phải tham chiếu render/current product artifact; output là một derivative image riêng trong Supabase Storage. Nó **không** thay đổi canonical 3D state.
 
 OpenAI key phải ở server/worker:
 
@@ -188,9 +188,9 @@ OpenAI key phải ở server/worker:
 OPENAI_API_KEY=...
 ```
 
-## 9. Retry / failure
+## 9. Retry / lỗi
 
-Worker cần update Job state nhất quán:
+Worker cần cập nhật Job state nhất quán:
 
 ```text
 QUEUED
@@ -198,31 +198,31 @@ QUEUED
 → COMPLETED
 ```
 
-Failure/retry:
+Khi lỗi/retry:
 
 ```text
 PROCESSING → RETRYING → PROCESSING
 PROCESSING → FAILED
 ```
 
-`failureReason` nên chứa message đủ debug nhưng không leak secret.
+`failureReason` nên chứa message đủ để debug nhưng không làm lộ secret.
 
 ## 10. Khi thêm worker mới
 
 1. Tạo package dưới `workers/<capability>`.
-2. Thêm package vào pnpm workspace nếu chưa auto-match.
+2. Thêm package vào pnpm workspace nếu chưa được auto-match.
 3. Định nghĩa queue name ổn định.
 4. Tạo queue producer trong `apps/api/src/queue/`.
-5. Tạo persistent `Job` trước khi enqueue.
-6. Worker cập nhật Job lifecycle.
+5. Tạo `Job` bền vững trước khi enqueue.
+6. Worker cập nhật vòng đời Job.
 7. Artifact dùng Supabase private Storage + object key.
-8. Thêm native dependency setup vào deployment docs.
+8. Bổ sung cách cài native dependency vào tài liệu deployment.
 9. Thêm syntax/runtime smoke test nếu có Python/native tool.
-10. Thêm metric job type và troubleshooting path.
+10. Thêm metric theo job type và đường troubleshooting.
 
 ## 11. Tài liệu liên quan
 
 - [../ARCHITECTURE.md](../ARCHITECTURE.md)
 - [../EXPORT.md](../EXPORT.md)
 - [../PRODUCTION_DEPLOYMENT.md](../PRODUCTION_DEPLOYMENT.md)
-- [07 - Advanced Capabilities](07_ADVANCED_CAPABILITIES.md)
+- [07 - Các khả năng nâng cao](07_ADVANCED_CAPABILITIES.md)
