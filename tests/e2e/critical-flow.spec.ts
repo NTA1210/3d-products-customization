@@ -4,7 +4,7 @@ import path from 'node:path';
 const now=new Date().toISOString();
 const authUser={id:'00000000-0000-4000-8000-000000000001',aud:'authenticated',role:'authenticated',email:'e2e@example.com',email_confirmed_at:now,phone:'',confirmed_at:now,last_sign_in_at:now,app_metadata:{provider:'email',providers:['email']},user_metadata:{},identities:[],created_at:now,updated_at:now,is_anonymous:false};
 const session={access_token:'e2e-access-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,refresh_token:'e2e-refresh-token',user:authUser};
-const analysis={version:1 as const,unitScaleToMm:1000,stats:{nodes:8,meshes:6,primitives:6,triangles:72,materials:1,textures:0},meshes:[],componentCandidates:[],warnings:[]};
+const analysis={version:1 as const,unitScaleToMm:1000,stats:{nodes:8,meshes:6,primitives:6,triangles:72,materials:1,textures:0},meshes:[],componentCandidates:[],warnings:[{code:'ROOT_SCALE_NON_IDENTITY',severity:'INFO' as const,message:'Root scale review note.',sourceId:'node_0000'},{code:'DUPLICATE_NAME',severity:'INFO' as const,message:'Duplicate display-name note.'}]};
 
 test('Import → prepare → lock → customize → undo/redo → save version → export GLB',async({page})=>{
   let versionPosts=0;
@@ -64,6 +64,9 @@ test('Import → prepare → lock → customize → undo/redo → save version �
   await glbInput.setInputFiles(path.resolve('examples/fixtures/proper-components.glb'));
   await expect(page.getByText('Asset Preparation')).toBeVisible();
   await expect(page.locator('.component-card').first()).toBeVisible();
+  await expect(page.getByText(/2 non-blocking model note\(s\) hidden/)).toBeVisible();
+  await expect(page.getByText('Root scale review note.')).toHaveCount(0);
+  await expect(page.getByText('Duplicate display-name note.')).toHaveCount(0);
 
   await page.getByLabel('Editable').check();
   await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
