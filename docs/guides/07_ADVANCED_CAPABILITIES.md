@@ -1,10 +1,10 @@
-# 07 - Advanced Capabilities
+# 07 - Các khả năng nâng cao
 
-Guide này giải thích cách các capability ngoài editor core sử dụng project/version/export hiện tại.
+Tài liệu này giải thích cách các capability ngoài editor core sử dụng project/version/export hiện tại.
 
 ## 1. Nguyên tắc chung
 
-Các capability nâng cao **không tạo một business-state path riêng**. Chúng phải dựa trên:
+Các capability nâng cao **không tạo một đường business state riêng**. Chúng phải dựa trên:
 
 ```text
 Asset + Manifest + Configuration / ModelVersion
@@ -12,18 +12,18 @@ Asset + Manifest + Configuration / ModelVersion
 
 và khi cần geometry/render thì dùng customized export hiện tại.
 
-## 2. Component Variants
+## 2. Component Variant
 
-Variant thay thế component bằng catalog asset tương thích.
+Variant thay thế component bằng asset trong catalog tương thích.
 
 Các điều kiện compatibility có thể gồm:
 
 - variant group.
 - semantic role.
-- model/component metadata.
+- metadata model/component.
 - dimension policy.
 
-`AUTO_FIT` dùng target component dimensions để scale variant runtime/export composition.
+`AUTO_FIT` dùng kích thước target component để scale variant trong runtime/export composition.
 
 UI liên quan:
 
@@ -40,9 +40,9 @@ packages/model-schema/
 
 Xem thêm: [../VARIANTS_PRESETS.md](../VARIANTS_PRESETS.md).
 
-## 3. Style & Preset
+## 3. Style và Preset
 
-Style/preset không mutate Configuration tùy ý. Engine phải convert rule thành một **batch EditorAction** và chạy cùng validation/apply pipeline như thao tác manual.
+Style/preset không mutate Configuration tùy ý. Engine phải chuyển rule thành một **batch EditorAction** và chạy cùng validation/apply pipeline như thao tác thủ công.
 
 Domain:
 
@@ -50,13 +50,13 @@ Domain:
 packages/preset-engine/
 ```
 
-Khi tạo preset mới, chỉ persist rule/state cần thiết; tránh lưu runtime Three.js object.
+Khi tạo preset mới, chỉ lưu rule/state cần thiết; tránh lưu runtime object Three.js.
 
 ## 4. AI Design Suggest
 
-AI Suggest là structured suggestion system, không phải canonical 3D generator.
+AI Suggest là hệ thống đề xuất có cấu trúc, không phải canonical 3D generator.
 
-Flow:
+Luồng:
 
 ```text
 current project/configuration
@@ -74,12 +74,12 @@ current project/configuration
 
 AI không được:
 
-- invent component/material/variant ID ngoài catalog rồi apply trực tiếp.
+- tự tạo component/material/variant ID ngoài catalog rồi áp dụng trực tiếp.
 - mutate Three.js scene.
-- thay thế source GLB canonical.
-- giữ API key ở browser.
+- thay thế source GLB chuẩn.
+- giữ API key ở trình duyệt.
 
-Server config ví dụ:
+Ví dụ cấu hình server:
 
 ```env
 AI_PROVIDER=openai
@@ -92,9 +92,9 @@ Xem thêm: [../OPENAI_PROVIDER.md](../OPENAI_PROVIDER.md).
 
 ## 5. AI Lifestyle Visualization
 
-Visualization dùng render của current product làm reference rồi tạo PNG derivative.
+Visualization dùng render của sản phẩm hiện tại làm reference rồi tạo PNG dẫn xuất.
 
-Flow:
+Luồng:
 
 ```text
 render artifact
@@ -104,28 +104,28 @@ render artifact
 → private Supabase Storage
 ```
 
-Artifact này chỉ phục vụ preview/presentation; nó không sửa 3D state.
+Artifact này chỉ phục vụ preview/presentation; nó không sửa trạng thái 3D.
 
-## 6. Manufacturability
+## 6. Khả năng sản xuất
 
 Có hai layer:
 
-### Deterministic rules
+### Quy tắc xác định
 
 `packages/manufacturing-engine` kiểm tra:
 
-- manifest constraints.
-- dimensions.
-- materials.
-- configured manufacturing rules.
+- constraint trong manifest.
+- dimension.
+- material.
+- manufacturing rule đã cấu hình.
 
-Rule có thể trả suggested EditorAction để user sửa vấn đề qua normal action pipeline.
+Rule có thể trả EditorAction gợi ý để người dùng sửa vấn đề qua action pipeline thông thường.
 
-### Geometry analysis
+### Phân tích geometry
 
 `workers/geometry/analyze.py` dùng Trimesh trên **customized exported GLB**.
 
-Các facts hiện có gồm body count, watertight, bounds/extents, volume khi hợp lệ.
+Các dữ kiện hiện có gồm body count, watertight, bounds/extents, volume khi hợp lệ.
 
 Không chạy geometry check trên immutable source nếu mục tiêu là đánh giá sản phẩm sau customization.
 
@@ -133,7 +133,7 @@ Không chạy geometry check trên immutable source nếu mục tiêu là đánh
 
 Render worker dùng Blender headless.
 
-Flow:
+Luồng:
 
 ```text
 completed customized GLB export
@@ -144,7 +144,7 @@ completed customized GLB export
 → Supabase
 ```
 
-Modes:
+Các mode:
 
 - `MULTI_VIEW`
 - `SPIN_360`
@@ -153,7 +153,7 @@ Render resource phải thuộc cùng authenticated project/user.
 
 ## 8. AR Preview
 
-AR preview sử dụng current-configuration export và `<model-viewer>` layer ở web.
+AR preview sử dụng current-configuration export và lớp `<model-viewer>` trên web.
 
 Web component:
 
@@ -161,11 +161,11 @@ Web component:
 apps/web/components/ModelViewerPreview.tsx
 ```
 
-AR không nên load source GLB cũ nếu người dùng đã customize; dùng artifact của current configuration.
+AR không nên load source GLB cũ nếu người dùng đã customize; dùng artifact của configuration hiện tại.
 
-Device/browser support là runtime concern, xem gap audit trước khi coi AR là certified trên mọi thiết bị.
+Khả năng hỗ trợ theo device/browser là vấn đề runtime; xem gap audit trước khi coi AR đã được chứng nhận trên mọi thiết bị.
 
-## 9. Collection Recommendation
+## 9. Đề xuất Collection
 
 Domain:
 
@@ -173,9 +173,9 @@ Domain:
 packages/collection-engine/
 ```
 
-V1 là deterministic ranking, không cần AI provider.
+V1 là cách xếp hạng có tính xác định, không cần AI provider.
 
-Weights hiện tại:
+Trọng số hiện tại:
 
 ```text
 style     50%
@@ -188,19 +188,19 @@ API trả score + breakdown để có thể giải thích recommendation.
 
 ## 10. Workshop / RFQ / Quote
 
-RFQ phải reference một **saved ModelVersion** thật.
+RFQ phải tham chiếu một **saved ModelVersion** thật.
 
 Payload có thể gồm:
 
-- dimensions/components/materials.
-- manufacturability issues.
-- preview/render references.
+- dimension/component/material.
+- manufacturability issue.
+- preview/render reference.
 - export reference.
-- customer note/workshop.
+- ghi chú khách hàng/workshop.
 
-Canonical payload lưu resource ID/object key. Khi đọc, API mint signed URL mới.
+Canonical payload lưu resource ID/object key. Khi đọc, API tạo signed URL mới.
 
-Lifecycle Phase 1:
+Vòng đời Phase 1:
 
 ```text
 SUBMITTED → RECEIVED → ACCEPTED | REJECTED
@@ -217,11 +217,11 @@ apps/web/components/CollectionWorkshopTools.tsx
 
 Trước khi code, xác định:
 
-1. input source of truth là Configuration hay saved ModelVersion?
+1. nguồn input chuẩn là Configuration hay saved ModelVersion?
 2. có cần customized GLB export trước không?
-3. operation có đủ nặng để cần BullMQ không?
+3. thao tác có đủ nặng để cần BullMQ không?
 4. artifact có private không?
-5. user/project ownership được check ở đâu?
+5. quyền sở hữu user/project được kiểm tra ở đâu?
 6. output có phải EditorAction không?
 7. cần domain test, worker smoke hay browser E2E?
 
@@ -231,4 +231,4 @@ Trước khi code, xác định:
 - [../EXPORT.md](../EXPORT.md)
 - [../VARIANTS_PRESETS.md](../VARIANTS_PRESETS.md)
 - [../API.md](../API.md)
-- [06 - Workers & Pipelines](06_WORKERS_AND_PIPELINES.md)
+- [06 - Worker và pipeline](06_WORKERS_AND_PIPELINES.md)

@@ -1,15 +1,15 @@
-# GLB export pipeline
+# Pipeline export GLB
 
-`POST /api/projects/:id/export` resolves either an explicit configuration snapshot, a saved version, or the active version. The shared schemas validate the manifest/configuration before a BullMQ export job is created.
+`POST /api/projects/:id/export` xác định cấu hình nguồn từ một snapshot cấu hình được truyền trực tiếp, một phiên bản đã lưu hoặc phiên bản đang hoạt động. Các schema dùng chung kiểm tra manifest/cấu hình trước khi tạo một export job trong BullMQ.
 
-The export worker:
-1. downloads the immutable source GLB from private Supabase Storage;
-2. clones source mesh primitives per configured node to avoid mutating shared mesh instances;
-3. applies current dimensions, component translation/rotation/scale, visibility/delete state, material presets and color override;
-4. applies whole-product placement through a wrapper node;
-5. writes a new GLB;
-6. validates the result with Khronos glTF Validator;
-7. stores the artifact at `exports/<project>/<job>/<filename>`;
-8. exposes a short-lived download URL through `GET /api/jobs/:id/artifact`.
+Export worker thực hiện:
+1. tải GLB nguồn bất biến từ Supabase Storage riêng tư;
+2. clone các mesh primitive nguồn theo từng node đã cấu hình để tránh thay đổi các mesh instance dùng chung;
+3. áp dụng kích thước hiện tại, translation/rotation/scale của component, trạng thái visibility/delete, material preset và color override;
+4. áp dụng vị trí của toàn bộ sản phẩm thông qua một wrapper node;
+5. ghi ra một GLB mới;
+6. kiểm tra kết quả bằng Khronos glTF Validator;
+7. lưu artifact tại `exports/<project>/<job>/<filename>`;
+8. cung cấp URL tải xuống có thời hạn ngắn thông qua `GET /api/jobs/:id/artifact`.
 
-Active `variantId` currently fails with `EXPORT_VARIANT_NOT_COMPOSITED` rather than producing a visually incorrect file. Variant asset composition is implemented in the subsequent variant/anchor slice.
+`variantId` đang hoạt động hiện sẽ trả lỗi `EXPORT_VARIANT_NOT_COMPOSITED` thay vì tạo ra một file sai về mặt hiển thị. Việc ghép asset variant được triển khai ở slice variant/anchor tiếp theo.

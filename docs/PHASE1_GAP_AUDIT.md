@@ -1,129 +1,129 @@
-# Phase 1 Definition-of-Done audit
+# Đánh giá khoảng trống Definition-of-Done của Phase 1
 
-Source: `3D_Product_Customization_Agent_Spec.md`, section **Definition of Done — Phase 1** and its required fixture scenarios.
+Nguồn: `3D_Product_Customization_Agent_Spec.md`, phần **Definition of Done — Phase 1** và các kịch bản fixture bắt buộc.
 
-Status legend:
+Chú thích trạng thái:
 
-- ✅ implemented and backed by repository code/tests/build evidence.
-- 🟡 implemented in code but dependent on external/native runtime or missing live-system evidence.
-- ❌ not implemented.
+- ✅ đã triển khai và có bằng chứng từ code/test/build trong repository.
+- 🟡 đã triển khai trong code nhưng phụ thuộc runtime/provider bên ngoài hoặc còn thiếu bằng chứng từ hệ thống live.
+- ❌ chưa triển khai.
 
-This audit deliberately distinguishes **implementation**, **deterministic CI regression evidence**, and **live deployed-system evidence**.
+Bản audit này chủ động phân biệt **implementation**, **bằng chứng regression CI có tính xác định** và **bằng chứng từ hệ thống đã deploy thật**.
 
-| # | Required demo step | Status | Repository evidence / boundary |
+| # | Bước demo bắt buộc | Trạng thái | Bằng chứng trong repository / ranh giới |
 |---|---|---|---|
-| 1 | Import model GLB | ✅ | Signed Supabase upload, owned ModelAsset and web import flow; Chromium CI exercises the browser import path with external boundaries mocked. |
-| 2 | System analyze model | ✅ | Asset worker validates GLB, analyzes source indices/islands/model-quality warnings, normalizes and persists analysis. |
-| 3 | User review/configure Component Manifest | ✅ | Asset Preparation UI + persisted manifest routes; exercised in Chromium CI. |
-| 4 | Open editor | ✅ | Manifest save transitions to editor state; exercised in Chromium CI. |
-| 5 | Position model | ✅ | Whole-model placement move/rotate before Lock. |
-| 6 | Lock placement | ✅ | Lock gate disables component customization before Lock and enables it after; exercised in Chromium CI. |
-| 7 | Select a component | ✅ | Tree/direct 3D selection with highlight. |
-| 8 | Resize within constraints | ✅ | Axis-aware dimension action + min/max/scaling-mode validation; exercised in Chromium CI. |
-| 9 | Change material/color | ✅ | Compatibility-aware material and color actions projected realtime; material path exercised in Chromium CI. |
-| 10 | Replace compatible component | ✅ | Variant catalog/replacement/AUTO_FIT plus final export composition. |
-| 11 | Apply style/preset | ✅ | Style and user-preset transactions emit normal editor actions. |
-| 12 | Undo/Redo | ✅ | Snapshot history and executable integration/domain tests; exercised in Chromium CI. |
-| 13 | Save version | ✅ | Persisted ModelVersion configuration snapshot; browser Save Version path is exercised in Chromium CI with API boundary mocked. |
-| 14 | Reload project and retain exact state | ✅ | Project/version hydrate path + exact serialization/reload integration assertion. |
-| 15 | Run AI Suggest and receive structured actions | 🟡 | Implemented server-side with render input, schema-constrained provider response and quota; requires configured OpenAI + render runtime for live proof. |
-| 16 | Apply valid AI suggestion through validator | ✅ | AI validation produces only validated actions; web applies via normal `dispatchBatch` / editor pipeline. |
-| 17 | Run Manufacturability Check | ✅ | Deterministic manufacturing rules are tested in Vitest and the actual Trimesh geometry analyzer is installed/executed in standard CI against all four GLB fixtures. Live BullMQ/storage orchestration remains a staging certification boundary, not an implementation gap. |
-| 18 | Render preview | 🟡 | Blender multi-view/SPIN_360 queue/worker implemented; Blender binary is not run by standard CI. |
-| 19 | Export customized GLB | ✅ | Current/saved configuration baking, variant composition and Khronos validation before storage; browser Export command path is exercised in Chromium CI with API boundary mocked. |
-| 20 | Re-import exported GLB successfully | 🟡 | Exported GLB is Khronos-validator checked before completion. A manual `Staging E2E` workflow now performs live export→download→GLB-header verification→re-import→analyze when a staging deployment and test credentials are configured; it remains 🟡 until that workflow succeeds against the live environment. |
-| 21 | Launch AR preview with current configuration | 🟡 | Current-configuration export + AR path exists; device/browser AR is not exercised by standard CI. |
-| 22 | Generate RFQ payload | ✅ | Persisted Workshop/RFQ flow with saved version, dimensions/components/materials/issues/previews/export references and fresh signed artifact URLs. |
+| 1 | Import model GLB | ✅ | Signed Supabase upload, ModelAsset có owner và luồng import trên web; Chromium CI chạy đường import qua trình duyệt với boundary bên ngoài được mock. |
+| 2 | Hệ thống phân tích model | ✅ | Asset worker kiểm tra GLB, phân tích source index/island/cảnh báo chất lượng model, normalize và lưu kết quả. |
+| 3 | Người dùng review/cấu hình Component Manifest | ✅ | Asset Preparation UI + route lưu manifest; được chạy trong Chromium CI. |
+| 4 | Mở editor | ✅ | Save manifest chuyển sang editor state; được chạy trong Chromium CI. |
+| 5 | Đặt vị trí model | ✅ | Move/rotate toàn bộ model trước khi Lock. |
+| 6 | Lock vị trí | ✅ | Lock gate chặn component customization trước Lock và bật sau Lock; được chạy trong Chromium CI. |
+| 7 | Chọn component | ✅ | Chọn từ tree hoặc trực tiếp trong 3D với highlight. |
+| 8 | Resize trong giới hạn | ✅ | Dimension action theo axis + validation min/max/scaling-mode; được chạy trong Chromium CI. |
+| 9 | Đổi material/color | ✅ | Material/color action có kiểm tra compatibility và projection realtime; đường material được chạy trong Chromium CI. |
+| 10 | Thay component tương thích | ✅ | Variant catalog/replacement/AUTO_FIT và composition ở final export. |
+| 11 | Áp dụng style/preset | ✅ | Style và user-preset transaction tạo editor action thông thường. |
+| 12 | Undo/Redo | ✅ | Snapshot history và integration/domain test thực thi được; được chạy trong Chromium CI. |
+| 13 | Lưu version | ✅ | ModelVersion lưu snapshot configuration; đường Save Version trên trình duyệt được chạy trong Chromium CI với API boundary mock. |
+| 14 | Reload project và giữ nguyên trạng thái chính xác | ✅ | Đường hydrate project/version + assertion integration cho serialization/reload chính xác. |
+| 15 | Chạy AI Suggest và nhận structured action | 🟡 | Đã triển khai phía server với render input, schema-constrained provider response và quota; cần OpenAI + render runtime được cấu hình để có bằng chứng live. |
+| 16 | Áp dụng AI suggestion hợp lệ qua validator | ✅ | AI validation chỉ tạo action đã được kiểm tra; web áp dụng qua `dispatchBatch` / editor pipeline thông thường. |
+| 17 | Chạy Manufacturability Check | ✅ | Deterministic manufacturing rule được test bằng Vitest và Trimesh geometry analyzer thật được cài/chạy trong standard CI với cả bốn GLB fixture. Live BullMQ/storage orchestration vẫn là ranh giới certification ở staging, không phải implementation gap. |
+| 18 | Render preview | 🟡 | Đã có Blender multi-view/SPIN_360 queue/worker; Blender binary không được chạy trong standard CI. |
+| 19 | Export customized GLB | ✅ | Bake configuration hiện tại/đã lưu, ghép variant và Khronos validation trước khi lưu; lệnh Export trên browser được chạy trong Chromium CI với API boundary mock. |
+| 20 | Re-import GLB đã export thành công | 🟡 | GLB export được Khronos Validator kiểm tra trước khi hoàn tất. Workflow `Staging E2E` chạy thủ công đã có để thực hiện live export→download→kiểm tra header GLB→re-import→analyze khi staging deployment và test credential được cấu hình; vẫn là 🟡 cho tới khi workflow đó chạy thành công trên môi trường live. |
+| 21 | Mở AR preview với configuration hiện tại | 🟡 | Đã có current-configuration export + AR path; AR trên device/browser thật chưa được chạy trong standard CI. |
+| 22 | Sinh RFQ payload | ✅ | Persisted Workshop/RFQ flow với saved version, dimensions/components/materials/issues/previews/export reference và signed artifact URL mới. |
 
-## Required model scenarios
+## Các kịch bản model bắt buộc
 
-| Scenario | Status | Evidence |
+| Kịch bản | Trạng thái | Bằng chứng |
 |---|---|---|
-| Proper multi-component model | ✅ | `examples/fixtures/proper-components.glb` + Khronos fixture test + Chromium critical-flow fixture + Trimesh worker smoke. |
-| One mesh with multiple disconnected geometry islands | ✅ | `examples/fixtures/disconnected-islands.glb` + analyzer island behavior/tests + Trimesh assertion for multiple bodies. |
-| One continuous mesh fallback/warning | ✅ | `examples/fixtures/continuous-mesh.glb` + warning/fallback behavior + Trimesh assertion for one body. |
-| Multi-material fixture required by test strategy | ✅ | `examples/fixtures/multi-material.glb`, Khronos validated and Trimesh-analyzed in CI. |
+| Model multi-component chuẩn | ✅ | `examples/fixtures/proper-components.glb` + Khronos fixture test + Chromium critical-flow fixture + Trimesh worker smoke. |
+| Một mesh có nhiều geometry island rời rạc | ✅ | `examples/fixtures/disconnected-islands.glb` + analyzer island behavior/test + Trimesh assertion cho nhiều body. |
+| Một mesh liên tục fallback/cảnh báo | ✅ | `examples/fixtures/continuous-mesh.glb` + warning/fallback behavior + Trimesh assertion cho một body. |
+| Multi-material fixture theo test strategy | ✅ | `examples/fixtures/multi-material.glb`, được Khronos validate và Trimesh analyze trong CI. |
 
-## Acceptance-criteria coverage summary
+## Tóm tắt coverage theo acceptance criteria
 
 ### Asset import
 
-- Valid GLB display/import: implemented.
-- Multi-mesh candidate listing: implemented.
-- One-mesh disconnected geometry candidate detection: implemented.
-- No semantic-split pretence: implemented; regions are explicitly unconfirmed geometry candidates.
-- Manifest save/reload: implemented.
+- Hiển thị/import GLB hợp lệ: đã triển khai.
+- Liệt kê candidate cho multi-mesh: đã triển khai.
+- Phát hiện candidate geometry rời rạc trong một mesh: đã triển khai.
+- Không giả vờ có semantic split: đã triển khai; region được ghi rõ là geometry candidate chưa xác nhận.
+- Lưu/reload manifest: đã triển khai.
 
 ### Place/Lock
 
-- Whole-model move/rotate before Lock: implemented.
-- Component customization controls blocked before Lock: implemented in editor rule/validation flow.
-- Component editing after Lock: implemented.
-- Placement remains serializable configuration state rather than a scene-only mutation.
+- Move/rotate toàn bộ model trước Lock: đã triển khai.
+- Chặn component customization control trước Lock: đã triển khai trong editor rule/validation flow.
+- Edit component sau Lock: đã triển khai.
+- Placement vẫn là configuration state có thể serialize thay vì mutation chỉ tồn tại trong scene.
 
 ### Component customization
 
-- Direct viewer select/highlight: implemented.
-- Editable axes/min/max validation: implemented.
-- Realtime projection after valid actions: implemented.
-- Unit conversion to internal mm: implemented/tested.
-- Dependencies resolve after source changes: implemented/tested.
+- Chọn/highlight trực tiếp trong viewer: đã triển khai.
+- Validation editable axis/min/max: đã triển khai.
+- Realtime projection sau action hợp lệ: đã triển khai.
+- Chuyển đổi unit về mm nội bộ: đã triển khai/test.
+- Dependency resolve sau thay đổi nguồn: đã triển khai/test.
 
 ### Material/color/variant
 
-- Material compatibility enforcement: implemented.
-- Realtime material/color: implemented.
-- Version persistence + Undo restoration: implemented.
-- Variant compatibility/catalog flow, anchor/AUTO_FIT metadata and Undo/Redo: implemented.
-- Variant is composited into final exported GLB rather than rejected by export.
+- Thực thi material compatibility: đã triển khai.
+- Realtime material/color: đã triển khai.
+- Version persistence + khôi phục qua Undo: đã triển khai.
+- Variant compatibility/catalog flow, metadata anchor/AUTO_FIT và Undo/Redo: đã triển khai.
+- Variant được composited vào GLB export cuối thay vì bị từ chối khi export.
 
-## Test/evidence status
+## Trạng thái test/bằng chứng
 
-### Deterministic browser E2E — ✅
+### Browser E2E có tính xác định — ✅
 
-The main CI runs a Playwright/Chromium critical-flow regression using the real Next.js UI, real GLB fixture, Three.js/R3F viewer, editor state, Action/Constraint pipeline and Undo/Redo. Only external Supabase/API network boundaries are mocked so the test is deterministic.
+CI chính chạy Playwright/Chromium critical-flow regression bằng UI Next.js thật, GLB fixture thật, Three.js/R3F viewer, editor state, Action/Constraint pipeline và Undo/Redo. Chỉ các network boundary bên ngoài như Supabase/API được mock để test có tính xác định.
 
-Covered browser path:
+Đường browser được bao phủ:
 
 `Sign in → Import GLB → Asset Preparation → Save Manifest → Place/Lock → Dimension → Material → Undo → Redo → Create Project → Save Version → Export GLB`.
 
-This is browser/UI regression evidence. It is intentionally **not** described as proof that a deployed Supabase/PostgreSQL/Redis/worker stack is healthy.
+Đây là bằng chứng regression UI/browser. Chủ động **không** mô tả nó là bằng chứng một stack Supabase/PostgreSQL/Redis/worker đã deploy đang hoạt động khỏe mạnh.
 
-### Native geometry worker CI — ✅
+### CI cho native geometry worker — ✅
 
-Standard CI installs `workers/geometry/requirements.txt` and executes `workers/geometry/analyze.py` against all four Phase 1 GLB fixtures. The smoke test verifies non-empty geometry facts, disconnected-body detection, the `geometry:multiple-bodies` issue, and the continuous-mesh single-body case.
+Standard CI cài `workers/geometry/requirements.txt` và chạy `workers/geometry/analyze.py` trên cả bốn GLB fixture của Phase 1. Smoke test xác minh geometry fact không rỗng, phát hiện body rời rạc, issue `geometry:multiple-bodies` và trường hợp continuous-mesh chỉ có một body.
 
-This demonstrates the Trimesh runtime itself on a clean GitHub runner. It does not replace a live queue/storage smoke test for the deployed geometry worker service.
+Điều này chứng minh Trimesh runtime thật trên GitHub runner sạch. Nó không thay thế live queue/storage smoke test cho geometry worker service đã deploy.
 
-### Live staging E2E path — available, runtime evidence pending
+### Đường Live staging E2E — đã có, bằng chứng runtime đang chờ
 
-`.github/workflows/staging-e2e.yml` is a manually triggered live-system workflow. With a configured `staging` environment and these secrets:
+`.github/workflows/staging-e2e.yml` là workflow live-system chạy thủ công. Khi cấu hình environment `staging` và các secret sau:
 
 - `STAGING_WEB_URL`
 - `STAGING_E2E_EMAIL`
 - `STAGING_E2E_PASSWORD`
 
-it exercises the deployed application and real external infrastructure rather than route mocks.
+workflow sẽ chạy ứng dụng đã deploy và hạ tầng bên ngoài thật thay vì route mock.
 
-The staging test uploads `proper-components.glb`, waits for the real asset pipeline, edits/saves/exports the project, downloads the customized GLB, verifies the binary `glTF` header, re-imports the exact downloaded bytes as a new asset, and waits for the analyzer to reach `Asset: ready` again.
+Staging test upload `proper-components.glb`, chờ asset pipeline thật, chỉnh sửa/lưu/export project, tải customized GLB, kiểm tra binary header `glTF`, re-import chính bytes đã download thành asset mới và chờ analyzer đạt lại trạng thái `Asset: ready`.
 
-The workflow's presence is not counted as a successful live proof until an actual staging run succeeds.
+Việc workflow tồn tại không được tính là live proof thành công cho tới khi có một staging run thực tế chạy thành công.
 
-### Observability — implemented, ingestion proof pending
+### Observability — đã triển khai, đang chờ bằng chứng ingestion
 
-The API exposes Prometheus-compatible `/api/metrics`, derives worker/job metrics from persisted PostgreSQL state, accepts authenticated `viewer_load_time` telemetry, and supports an optional scrape bearer token. Standard tests validate the exposition output. A production metrics backend still needs to scrape it and verify dashboards/alerts in the chosen deployment environment.
+API cung cấp `/api/metrics` tương thích Prometheus, suy ra metric worker/job từ PostgreSQL state đã lưu, nhận telemetry `viewer_load_time` có xác thực và hỗ trợ scrape bearer token tùy chọn. Standard test kiểm tra exposition output. Vẫn cần một production metrics backend thật để scrape và xác minh dashboard/alert trên môi trường deployment đã chọn.
 
-### External providers/native tools
+### Provider/runtime bên ngoài
 
-Standard CI validates TypeScript builds/tests, Python syntax, executable Trimesh geometry analysis, and the deterministic Chromium flow. It does not execute Blender, live Supabase signed storage/queue orchestration, or OpenAI requests. These require the staging/deployment smoke path and provider/runtime configuration.
+Standard CI kiểm tra TypeScript build/test, syntax Python, executable Trimesh geometry analysis và deterministic Chromium flow. Nó không chạy Blender, live Supabase signed storage/queue orchestration hoặc OpenAI request. Các mục này cần staging/deployment smoke path cùng cấu hình provider/runtime.
 
-## Recommended remaining closure order
+## Thứ tự đóng các gap còn lại được khuyến nghị
 
-1. Configure a staging deployment + GitHub `staging` environment secrets and run `Staging E2E` successfully.
-2. Add live smoke coverage for the deployed geometry queue and Blender preview/render workers; Trimesh itself is already exercised in standard CI.
-3. Run AR preview on at least one supported real mobile/device browser and capture evidence.
-4. Add a controlled live AI Suggest smoke test with quota/cost guardrails.
-5. Connect `/api/metrics` to the deployment's metrics backend and verify scrape ingestion, dashboarding and alerting.
-6. Keep the Chromium critical-flow and Trimesh fixture smoke tests required in CI to prevent regressions.
+1. Cấu hình staging deployment + GitHub `staging` environment secret và chạy `Staging E2E` thành công.
+2. Thêm live smoke coverage cho deployed geometry queue và Blender preview/render worker; bản thân Trimesh đã được chạy trong standard CI.
+3. Chạy AR preview trên ít nhất một mobile/device browser được hỗ trợ và lưu bằng chứng.
+4. Thêm controlled live AI Suggest smoke test với quota/cost guardrail.
+5. Kết nối `/api/metrics` với metrics backend của deployment và xác minh scrape ingestion, dashboard và alert.
+6. Giữ Chromium critical-flow và Trimesh fixture smoke test là bước bắt buộc trong CI để ngăn regression.
 
-Until the live-system items above are exercised, the repository should be described as **Phase 1 feature-complete in code with browser critical-flow and native Trimesh runtime evidence, plus remaining live deployment/provider certification gaps**, not as fully production-certified.
+Cho tới khi các mục live-system ở trên được chạy, repository nên được mô tả là **đã hoàn tất tính năng Phase 1 trong code, có bằng chứng browser critical-flow và native Trimesh runtime, nhưng vẫn còn các khoảng trống certification cho deployment/provider thật**, không nên mô tả là đã được production-certified hoàn toàn.

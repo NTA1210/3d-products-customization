@@ -1,10 +1,10 @@
-# 11 - Extension Guide
+# 11 - Hướng dẫn mở rộng
 
-Guide này dùng khi cần thêm feature mới mà vẫn giữ đúng kiến trúc của repo.
+Tài liệu này dùng khi cần thêm feature mới mà vẫn giữ đúng kiến trúc của repo.
 
 ## 1. Bắt đầu từ domain, không bắt đầu từ UI
 
-Trước khi viết button/input mới, trả lời:
+Trước khi viết button/input mới, hãy trả lời:
 
 1. Feature thay đổi business state nào?
 2. State đó thuộc Manifest, Configuration, ModelVersion hay artifact riêng?
@@ -35,7 +35,7 @@ Nếu action cần field state mới, sửa schema tương ứng trong:
 packages/model-schema/
 ```
 
-Đảm bảo field serialize được trong Configuration/ModelVersion.
+Đảm bảo field có thể serialize trong Configuration/ModelVersion.
 
 ### Bước 3 - Validation
 
@@ -48,7 +48,7 @@ packages/compatibility-engine/
 
 Không đặt validation chỉ trong React component.
 
-### Bước 4 - Apply logic
+### Bước 4 - Logic áp dụng
 
 Sửa:
 
@@ -56,11 +56,11 @@ Sửa:
 packages/editor-core/
 ```
 
-`applyAction/applyActions` phải tạo Configuration mới và giữ transaction semantics.
+`applyAction/applyActions` phải tạo Configuration mới và giữ đúng semantics của transaction.
 
-### Bước 5 - Runtime projection
+### Bước 5 - Projection ở runtime
 
-Nếu action tạo visual effect, thêm projection trong:
+Nếu action tạo hiệu ứng hiển thị, thêm projection trong:
 
 ```text
 apps/web/components/ModelViewport.tsx
@@ -79,20 +79,20 @@ Thêm tối thiểu:
 - action schema test.
 - validation test.
 - apply test.
-- serialization test nếu state mới.
+- serialization test nếu có state mới.
 - Undo/Redo test.
 - Playwright nếu nằm trên critical user flow.
 
 ## 3. Thêm field vào Manifest
 
-Manifest là model/component rule definition, không phải temporary UI state.
+Manifest là định nghĩa rule của model/component, không phải temporary UI state.
 
 Checklist:
 
 1. sửa `ModelManifest`/component schema.
-2. update Asset Preparation UI.
-3. update save/load manifest API nếu cần.
-4. update domain engine dùng field đó.
+2. cập nhật Asset Preparation UI.
+3. cập nhật save/load manifest API nếu cần.
+4. cập nhật domain engine dùng field đó.
 5. migration chỉ cần nếu field nằm trong typed DB column; `manifestJson` bản thân là JSON nhưng schema versioning vẫn cần cân nhắc backward compatibility.
 6. thêm fixture/test cho field mới.
 
@@ -100,23 +100,23 @@ Checklist:
 
 Configuration phải:
 
-- serializable.
-- deterministic.
-- đủ để reload exact state.
+- có thể serialize.
+- có tính xác định.
+- đủ để reload lại chính xác state.
 
 Sau khi thêm field:
 
-1. update schema/default state.
-2. update editor apply logic.
-3. update viewer projection.
-4. update export baking nếu field ảnh hưởng artifact.
-5. update save/reload/version tests.
+1. cập nhật schema/default state.
+2. cập nhật editor apply logic.
+3. cập nhật viewer projection.
+4. cập nhật export baking nếu field ảnh hưởng artifact.
+5. cập nhật test save/reload/version.
 
 Nếu export không biết field mới nhưng viewer biết, rất dễ tạo tình trạng “trên màn hình đúng, file export sai”.
 
-## 5. Thêm API capability mới
+## 5. Thêm capability API mới
 
-Pattern:
+Mẫu cấu trúc:
 
 ```text
 apps/api/src/<capability>/
@@ -124,15 +124,15 @@ apps/api/src/<capability>/
 
 Checklist:
 
-1. request Zod validation.
-2. `SupabaseAuthGuard` nếu user-owned.
-3. ownership check server-side.
-4. reuse domain schema/engine.
-5. nếu operation dài: Job + queue.
+1. kiểm tra request bằng Zod.
+2. dùng `SupabaseAuthGuard` nếu tài nguyên thuộc người dùng.
+3. kiểm tra ownership phía server.
+4. tái sử dụng domain schema/engine.
+5. nếu tác vụ dài: Job + queue.
 6. private artifact: object key + signed read URL.
-7. register controller/service trong AppModule.
-8. update `docs/API.md`.
-9. test.
+7. đăng ký controller/service trong AppModule.
+8. cập nhật `docs/API.md`.
+9. thêm test.
 
 ## 6. Thêm worker mới
 
@@ -156,16 +156,16 @@ Sau đó:
 
 1. tạo queue producer trong API.
 2. định nghĩa queue payload type.
-3. create/update Job record.
-4. worker update lifecycle.
-5. write artifact private.
-6. add deployment dependency.
-7. add CI smoke nếu runtime chạy được trên GitHub runner.
-8. add metrics/troubleshooting.
+3. tạo/cập nhật Job record.
+4. worker cập nhật vòng đời.
+5. ghi artifact private.
+6. bổ sung dependency deployment.
+7. thêm CI smoke nếu runtime có thể chạy trên GitHub runner.
+8. bổ sung metric/troubleshooting.
 
-## 7. Thêm material/variant/style catalog field
+## 7. Thêm field cho catalog material/variant/style
 
-Catalog metadata có thể được dùng bởi:
+Catalog metadata có thể được sử dụng bởi:
 
 - compatibility engine.
 - preset/style engine.
@@ -173,13 +173,13 @@ Catalog metadata có thể được dùng bởi:
 - export worker.
 - collection recommendation.
 
-Vì vậy khi sửa catalog schema, search toàn repo theo field cũ/new field trước khi merge.
+Vì vậy khi sửa catalog schema, hãy search toàn repo theo field cũ/field mới trước khi merge.
 
-## 8. Thêm AI capability
+## 8. Thêm capability AI
 
-AI output không được coi là trusted business state.
+AI output không được coi là business state đáng tin cậy.
 
-Flow bắt buộc:
+Luồng bắt buộc:
 
 ```text
 provider response
@@ -189,9 +189,9 @@ provider response
 → user apply hoặc derivative artifact
 ```
 
-Nếu AI đề xuất editor changes, output cuối nên là EditorAction/batch action.
+Nếu AI đề xuất thay đổi editor, output cuối nên là EditorAction/batch action.
 
-Nếu AI tạo image, lưu artifact riêng; không mutate GLB canonical.
+Nếu AI tạo image, lưu artifact riêng; không mutate canonical GLB.
 
 ## 9. Thêm manufacturing rule
 
@@ -201,15 +201,15 @@ Nếu AI tạo image, lưu artifact riêng; không mutate GLB canonical.
 packages/manufacturing-engine/
 ```
 
-Nếu cần geometry facts thực, dùng geometry worker output từ customized GLB.
+Nếu cần geometry fact thực, dùng output của geometry worker từ customized GLB.
 
-Nếu rule gợi ý cách sửa, trả suggested EditorAction hợp lệ thay vì một chuỗi hướng dẫn khó apply tự động.
+Nếu rule gợi ý cách sửa, trả EditorAction gợi ý hợp lệ thay vì một chuỗi hướng dẫn khó áp dụng tự động.
 
-## 10. Thêm export format
+## 10. Thêm định dạng export
 
-Không tạo một pipeline customization song song cho format mới.
+Không tạo một pipeline customization song song cho định dạng mới.
 
-Pattern đúng:
+Mẫu đúng:
 
 ```text
 source + configuration
@@ -218,24 +218,24 @@ source + configuration
 → derive format mới
 ```
 
-Như vậy format mới kế thừa cùng customization truth.
+Như vậy định dạng mới kế thừa cùng nguồn sự thật customization.
 
-Cân nhắc unit semantics: GLB/glTF dùng meter; OBJ/STL hiện được derive ở millimeter coordinates.
+Cần cân nhắc semantics về unit: GLB/glTF dùng meter; OBJ/STL hiện được tạo theo tọa độ millimeter.
 
-## 11. Thêm metrics
+## 11. Thêm metric
 
-Nếu metric có thể suy ra từ persisted DB state, ưu tiên derive từ DB để không phụ thuộc memory của một API instance.
+Nếu metric có thể suy ra từ persisted DB state, ưu tiên lấy từ DB để không phụ thuộc memory của một API instance.
 
-Nếu là browser-only metric, gửi qua authenticated telemetry endpoint.
+Nếu là metric chỉ có ở trình duyệt, gửi qua authenticated telemetry endpoint.
 
-Update:
+Cập nhật:
 
 ```text
 docs/OBSERVABILITY.md
 tests/metrics.test.ts
 ```
 
-## 12. Pull Request checklist
+## 12. Checklist Pull Request
 
 Trước PR:
 
@@ -245,7 +245,7 @@ pnpm check
 pnpm build
 ```
 
-Nếu sửa browser flow:
+Nếu sửa luồng trình duyệt:
 
 ```bash
 pnpm test:e2e
@@ -257,30 +257,30 @@ Nếu sửa geometry worker:
 python tests/geometry_worker_smoke.py
 ```
 
-PR description nên nêu:
+Mô tả PR nên nêu:
 
 - state/source-of-truth nào thay đổi.
 - validation boundary.
-- worker/artifact impact.
-- migration/queue compatibility.
-- tests đã thêm/chạy.
-- phần nào vẫn cần staging/provider/device proof.
+- tác động tới worker/artifact.
+- compatibility của migration/queue.
+- test đã thêm/chạy.
+- phần nào vẫn cần bằng chứng từ staging/provider/device.
 
-## 13. Anti-patterns cần tránh
+## 13. Các anti-pattern cần tránh
 
 - Mutate `THREE.Mesh` rồi coi đó là saved state.
 - Hard-code component bằng mesh name cho một model cụ thể.
 - Lưu signed URL vào DB như canonical artifact identity.
-- Cho browser giữ service secret.
-- Gọi Blender/Trimesh/OpenAI tác vụ dài trực tiếp trong request handler.
-- Cho AI bypass schema/catalog/constraint validation.
+- Cho trình duyệt giữ service secret.
+- Gọi Blender/Trimesh/OpenAI cho tác vụ dài trực tiếp trong request handler.
+- Cho AI bỏ qua schema/catalog/constraint validation.
 - Tạo export logic riêng không đi từ canonical configuration.
-- Tắt test/CI để merge feature.
+- Tắt test/CI chỉ để merge feature.
 
 ## 14. Đọc thêm
 
-- [02 - Repository & Architecture](02_REPOSITORY_AND_ARCHITECTURE.md)
+- [02 - Repository và kiến trúc](02_REPOSITORY_AND_ARCHITECTURE.md)
 - [03 - Web Editor](03_WEB_EDITOR.md)
 - [04 - API Backend](04_API_BACKEND.md)
-- [06 - Workers & Pipelines](06_WORKERS_AND_PIPELINES.md)
-- [08 - Testing & CI](08_TESTING_AND_CI.md)
+- [06 - Worker và pipeline](06_WORKERS_AND_PIPELINES.md)
+- [08 - Kiểm thử và CI](08_TESTING_AND_CI.md)

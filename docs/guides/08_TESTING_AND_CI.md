@@ -1,8 +1,8 @@
-# 08 - Testing & CI
+# 08 - Kiểm thử và CI
 
-Guide này mô tả test nào dùng cho layer nào và CI hiện kiểm tra những gì.
+Tài liệu này mô tả loại test nào dùng cho layer nào và CI hiện kiểm tra những gì.
 
-## 1. Root commands
+## 1. Các lệnh ở root
 
 ```bash
 pnpm test
@@ -16,22 +16,22 @@ pnpm check
 - `pnpm build` → Turbo build toàn workspace.
 - `pnpm check` → TypeScript no-emit check cho web + API.
 
-## 2. Test layout
+## 2. Cấu trúc test
 
 Các test chính dưới `tests/`:
 
-- `domain.test.ts` — action schema, constraints, units, compatibility, dependencies, serialization, manufacturing, AI validation.
-- `critical-flow.integration.test.ts` — central editor/domain flow.
+- `domain.test.ts` — action schema, constraint, unit, compatibility, dependency, serialization, manufacturing, AI validation.
+- `critical-flow.integration.test.ts` — luồng editor/domain chính.
 - `preset-engine.test.ts` — preset/style engine.
 - `collection-engine.test.ts` — recommendation engine.
-- `model-quality.test.ts` — model quality/analyzer behavior.
-- `fixtures.test.ts` — required GLB fixtures/Khronos validation.
-- `metrics.test.ts` — Prometheus metric exposition.
-- `geometry_worker_smoke.py` — executable Trimesh runtime smoke.
-- `tests/e2e/` — deterministic Chromium editor flow.
-- `tests/staging/` — live deployed-system flow.
+- `model-quality.test.ts` — hành vi model quality/analyzer.
+- `fixtures.test.ts` — GLB fixture bắt buộc/Khronos validation.
+- `metrics.test.ts` — định dạng xuất metric Prometheus.
+- `geometry_worker_smoke.py` — smoke test thực thi Trimesh runtime.
+- `tests/e2e/` — luồng editor Chromium có tính xác định.
+- `tests/staging/` — luồng hệ thống đã deploy thật.
 
-## 3. Required GLB fixtures
+## 3. GLB fixture bắt buộc
 
 ```text
 examples/fixtures/proper-components.glb
@@ -42,34 +42,34 @@ examples/fixtures/multi-material.glb
 
 Các fixture dùng để tránh chỉ test một model “đẹp”.
 
-## 4. Domain test nên dùng khi nào
+## 4. Khi nào nên dùng domain test
 
 Dùng Vitest khi thay đổi:
 
 - action schema.
 - constraint/min/max/lock.
-- material/variant compatibility.
-- dependency formula.
-- preset/style transaction.
+- compatibility material/variant.
+- công thức dependency.
+- transaction preset/style.
 - serialization/version state.
 - manufacturing rule.
-- AI structured action validation.
+- validation structured action của AI.
 - collection scoring.
 
 Domain test phải nhanh và không cần Supabase/Redis thật.
 
 ## 5. Browser E2E
 
-Playwright critical flow dùng:
+Playwright critical flow sử dụng:
 
-- real Next.js UI.
-- real React Three Fiber/Three.js viewer.
-- real GLB fixture.
-- real Zustand/editor/action/constraint flow.
+- UI Next.js thật.
+- React Three Fiber/Three.js viewer thật.
+- GLB fixture thật.
+- luồng Zustand/editor/action/constraint thật.
 
-External Supabase/API boundary được route-mock để deterministic.
+Boundary Supabase/API bên ngoài được route-mock để test có tính xác định.
 
-Critical path hiện bao gồm:
+Đường chính hiện bao gồm:
 
 ```text
 Sign in
@@ -85,9 +85,9 @@ Sign in
 → Export GLB
 ```
 
-Nếu sửa flow này, cập nhật test thay vì xóa assertion để làm CI xanh.
+Nếu sửa luồng này, hãy cập nhật test thay vì xóa assertion chỉ để CI xanh.
 
-## 6. Native Trimesh smoke
+## 6. Smoke test Trimesh native
 
 CI cài:
 
@@ -95,13 +95,13 @@ CI cài:
 python -m pip install -r workers/geometry/requirements.txt
 ```
 
-rồi chạy `tests/geometry_worker_smoke.py` trên 4 GLB fixtures.
+sau đó chạy `tests/geometry_worker_smoke.py` trên 4 GLB fixture.
 
-Smoke test xác nhận runtime thật của `trimesh.load`, mesh facts, disconnected body detection và continuous mesh behavior.
+Smoke test xác nhận runtime thật của `trimesh.load`, mesh fact, phát hiện body rời rạc và hành vi continuous mesh.
 
 ## 7. Staging E2E
 
-Workflow manual:
+Workflow chạy thủ công:
 
 ```text
 .github/workflows/staging-e2e.yml
@@ -115,22 +115,22 @@ STAGING_E2E_EMAIL
 STAGING_E2E_PASSWORD
 ```
 
-Flow live:
+Luồng live:
 
 ```text
-real sign-in
-→ real Supabase upload
-→ real asset worker
-→ edit/save/export
-→ download exported GLB
-→ verify GLB
-→ re-import exported bytes
-→ real analyze ready
+đăng nhập thật
+→ upload Supabase thật
+→ asset worker thật
+→ chỉnh sửa/lưu/export
+→ tải GLB đã export
+→ kiểm tra GLB
+→ re-import bytes đã export
+→ analyzer thật đạt ready
 ```
 
-Sự tồn tại của workflow không đồng nghĩa live proof đã pass; xem `PHASE1_GAP_AUDIT.md`.
+Việc workflow tồn tại không đồng nghĩa live proof đã pass; xem `PHASE1_GAP_AUDIT.md`.
 
-## 8. Main CI
+## 8. CI chính
 
 Workflow:
 
@@ -140,19 +140,19 @@ Workflow:
 
 Các quality gate chính:
 
-1. install pnpm dependencies.
+1. cài dependency pnpm.
 2. Prisma generate.
-3. Python worker syntax.
-4. install geometry Python runtime.
-5. execute Trimesh smoke.
+3. kiểm tra syntax Python worker.
+4. cài geometry Python runtime.
+5. chạy Trimesh smoke.
 6. Vitest.
 7. production build.
-8. install Chromium.
+8. cài Chromium.
 9. browser critical-flow E2E.
 
-Playwright report/trace được upload khi browser test fail.
+Playwright report/trace được upload khi browser test thất bại.
 
-## 9. Test strategy khi thêm feature
+## 9. Chiến lược test khi thêm feature
 
 ### Thêm EditorAction
 
@@ -161,28 +161,28 @@ Cần tối thiểu:
 - schema test.
 - validation test.
 - apply/transaction test.
-- Undo/Redo behavior nếu ảnh hưởng state.
+- kiểm tra hành vi Undo/Redo nếu ảnh hưởng state.
 
 ### Thêm worker
 
 Cần:
 
 - TypeScript build.
-- Python syntax nếu có Python.
-- executable native smoke nếu dependency cho phép chạy trong CI.
-- failure/result contract test.
+- kiểm tra syntax Python nếu có Python.
+- executable native smoke nếu dependency có thể chạy trong CI.
+- test contract failure/result.
 
-### Thêm UI critical operation
+### Thêm thao tác UI quan trọng
 
-Nếu operation nằm trên đường chính của user, thêm Playwright coverage.
+Nếu thao tác nằm trên đường chính của người dùng, thêm Playwright coverage.
 
-### Thêm provider/external integration
+### Thêm tích hợp provider/external
 
-Giữ deterministic test ở CI + live smoke riêng có quota/credentials.
+Giữ deterministic test trong CI + live smoke riêng có quota/credential.
 
-## 10. Khi CI fail
+## 10. Khi CI thất bại
 
-Không tắt quality gate. Xác định layer fail:
+Không tắt quality gate. Xác định layer lỗi:
 
 ```text
 install → dependency/lockfile
@@ -200,4 +200,4 @@ Playwright → browser/UI regression
 - [../PHASE1_GAP_AUDIT.md](../PHASE1_GAP_AUDIT.md)
 - [../IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md)
 - [03 - Web Editor](03_WEB_EDITOR.md)
-- [06 - Workers & Pipelines](06_WORKERS_AND_PIPELINES.md)
+- [06 - Worker và pipeline](06_WORKERS_AND_PIPELINES.md)

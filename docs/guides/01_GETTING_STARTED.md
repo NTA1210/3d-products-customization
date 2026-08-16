@@ -1,6 +1,6 @@
-# 01 - Getting Started
+# 01 - Bắt đầu
 
-Guide này dùng để chạy source lần đầu trên máy local.
+Tài liệu này dùng để chạy source lần đầu trên máy local.
 
 ## 1. Yêu cầu môi trường
 
@@ -8,11 +8,11 @@ Guide này dùng để chạy source lần đầu trên máy local.
 - pnpm 9.x (`packageManager` của repo là `pnpm@9.12.3`).
 - Docker nếu dùng PostgreSQL + Redis local.
 - Một Supabase project cho Auth + private Storage.
-- Python 3 cho geometry worker và OBJ/STL conversion.
+- Python 3 cho geometry worker và chuyển đổi OBJ/STL.
 - Blender nếu muốn chạy render / 360.
 - OpenAI API key chỉ khi bật AI Suggest hoặc lifestyle visualization.
 
-## 2. Clone và cài dependency
+## 2. Clone repository và cài dependency
 
 ```bash
 git clone https://github.com/NTA1210/3d-products-customization.git
@@ -32,13 +32,13 @@ pnpm check
 
 `pnpm dev` dùng Turbo để chạy các workspace có script `dev`.
 
-## 3. Tạo environment file
+## 3. Tạo file biến môi trường
 
 ```bash
 cp .env.example .env
 ```
 
-Nhóm biến tối thiểu để chạy core flow:
+Nhóm biến tối thiểu để chạy luồng chính:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/product3d
@@ -56,9 +56,9 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 
 Không đưa `SUPABASE_SECRET_KEY` hoặc `OPENAI_API_KEY` vào biến `NEXT_PUBLIC_*`.
 
-Xem thêm: [Data, Auth & Storage](05_DATA_AUTH_STORAGE.md).
+Xem thêm: [Dữ liệu, xác thực và Storage](05_DATA_AUTH_STORAGE.md).
 
-## 4. Start PostgreSQL + Redis local
+## 4. Khởi động PostgreSQL + Redis local
 
 Repo có `docker-compose.yml` cho hai dependency này:
 
@@ -84,12 +84,12 @@ pnpm --filter @product3d/api prisma:seed
 
 Ý nghĩa:
 
-- `prisma:generate`: generate Prisma Client.
+- `prisma:generate`: tạo Prisma Client.
 - `prisma:migrate`: áp dụng migration local/dev.
-- `storage:setup`: tạo/verify private Supabase bucket.
-- `prisma:seed`: seed material/style/variant/catalog/demo data cần thiết.
+- `storage:setup`: tạo/xác minh private Supabase bucket.
+- `prisma:seed`: tạo dữ liệu seed cho material/style/variant/catalog/demo cần thiết.
 
-## 6. Cài Python dependencies
+## 6. Cài dependency Python
 
 Geometry/manufacturability:
 
@@ -97,13 +97,13 @@ Geometry/manufacturability:
 python -m pip install -r workers/geometry/requirements.txt
 ```
 
-Derived OBJ/STL export:
+Export OBJ/STL dẫn xuất:
 
 ```bash
 python -m pip install -r workers/export/requirements.txt
 ```
 
-## 7. Chạy app
+## 7. Chạy ứng dụng
 
 ### Cách A - chạy toàn workspace
 
@@ -162,27 +162,27 @@ pnpm --filter @product3d/ai-visualization-worker dev
 - Health: `http://localhost:4000/api/health`
 - Metrics: `http://localhost:4000/api/metrics`
 
-## 9. Flow kiểm tra nhanh
+## 9. Luồng kiểm tra nhanh
 
 Sau khi đăng nhập Supabase:
 
 1. Upload `examples/fixtures/proper-components.glb`.
-2. Chờ asset pipeline về `ready`.
-3. Review Asset Preparation.
-4. Chọn component editable + editable axes.
-5. Save Manifest & Open Editor.
-6. Place / Lock.
+2. Chờ asset pipeline về trạng thái `ready`.
+3. Kiểm tra Asset Preparation.
+4. Chọn component có thể chỉnh sửa + các axis có thể chỉnh sửa.
+5. Chọn `Save Manifest & Open Editor`.
+6. Đặt vị trí / Lock.
 7. Resize hoặc đổi material.
 8. Undo / Redo.
-9. Create Project.
-10. Save Version.
+9. Tạo Project.
+10. Lưu Version.
 11. Export GLB.
 
-Nếu flow này không chạy, đọc [Troubleshooting](10_TROUBLESHOOTING.md) trước khi sửa code.
+Nếu luồng này không chạy, đọc [Xử lý sự cố](10_TROUBLESHOOTING.md) trước khi sửa code.
 
 ## 10. Nên đọc tiếp
 
-- [Repository & Architecture](02_REPOSITORY_AND_ARCHITECTURE.md)
+- [Repository và kiến trúc](02_REPOSITORY_AND_ARCHITECTURE.md)
 - [Web Editor](03_WEB_EDITOR.md)
 - [API Backend](04_API_BACKEND.md)
-- [Workers & Pipelines](06_WORKERS_AND_PIPELINES.md)
+- [Worker và pipeline](06_WORKERS_AND_PIPELINES.md)

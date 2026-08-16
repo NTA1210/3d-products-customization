@@ -1,106 +1,106 @@
-# Implementation status
+# Trạng thái triển khai
 
-This file describes the **current code/evidence boundary**, not the original bootstrap plan. Features are not marked complete merely because a route or button exists; runtime/provider-dependent capabilities are identified explicitly.
+File này mô tả **ranh giới hiện tại giữa code và bằng chứng kiểm chứng**, không phải kế hoạch bootstrap ban đầu. Một tính năng không được đánh dấu hoàn tất chỉ vì đã có route hoặc button; các khả năng phụ thuộc runtime/provider được chỉ rõ riêng.
 
-## P0 — implemented in code
+## P0 — đã triển khai trong code
 
-### Asset import and preparation
-- Supabase Auth ownership for imported assets.
-- Private Supabase Storage with signed browser upload/download grants; immutable source object keys.
-- GLB canonical input, MIME/metadata guardrails and configurable upload-size limit.
-- Khronos glTF validation before normalization and after normalization.
-- glTF Transform normalization with Draco/Meshopt support.
-- Stable source node/mesh/primitive IDs based on glTF indices rather than mesh names.
-- Disconnected triangle-island candidates for one-mesh assets, without claiming semantic segmentation.
-- Model-quality warnings for missing material/UV, empty node, duplicate names, one mesh, disconnected islands, continuous one-mesh fallback, high triangle count, high texture resolution/encoded size and suspicious/non-uniform root scale.
-- Asset Preparation UI for name/role/editability/axes/scaling mode/dimension constraints/material categories/variant group/anchors/region mapping/dependencies/visibility.
-- Persisted Component Manifest.
+### Import và chuẩn bị asset
+- Quyền sở hữu asset import thông qua Supabase Auth.
+- Supabase Storage riêng tư với signed upload/download grant cho trình duyệt; object key nguồn là bất biến.
+- GLB là input chuẩn, có guardrail MIME/metadata và giới hạn kích thước upload có thể cấu hình.
+- Kiểm tra Khronos glTF trước và sau normalization.
+- Normalize bằng glTF Transform với hỗ trợ Draco/Meshopt.
+- Stable source node/mesh/primitive ID dựa trên index glTF thay vì tên mesh.
+- Phát hiện các candidate triangle-island rời rạc cho asset một mesh mà không khẳng định đây là semantic segmentation.
+- Cảnh báo chất lượng model cho trường hợp thiếu material/UV, node rỗng, tên trùng, một mesh, island rời rạc, fallback một mesh liên tục, triangle count cao, texture resolution/encoded size cao và root scale đáng ngờ/không đồng đều.
+- UI Asset Preparation cho name/role/editability/axes/scaling mode/dimension constraints/material categories/variant group/anchors/region mapping/dependencies/visibility.
+- Component Manifest được lưu bền vững.
 
 ### Editor core
-- Place → Lock → Customize gate.
-- Direct component selection/highlight.
-- Width/height/depth with editable-axis and min/max validation.
-- Component position/rotation, material/color, delete/restore/reset.
-- `mm`, `cm`, `inch` conversion into canonical internal millimeters.
-- Structured Action schema and shared Constraint / Compatibility / Dependency pipeline.
-- Undo/Redo and batch transactions.
-- Runtime Three.js scene remains a projection of serializable configuration.
-- Deterministic dependency formulas; no arbitrary `eval`.
+- Cổng Place → Lock → Customize.
+- Chọn/highlight component trực tiếp.
+- Width/height/depth với validation editable-axis và min/max.
+- Position/rotation của component, material/color, delete/restore/reset.
+- Chuyển đổi `mm`, `cm`, `inch` về đơn vị nội bộ chuẩn là millimeter.
+- Action schema có cấu trúc và pipeline dùng chung Constraint / Compatibility / Dependency.
+- Undo/Redo và batch transaction.
+- Three.js scene ở runtime vẫn chỉ là projection của configuration có thể serialize.
+- Công thức dependency theo cách xác định; không dùng `eval` tùy ý.
 
-### Persistence and output
-- Authenticated Project CRUD/list/load/duplicate.
-- ModelVersion configuration snapshots and exact reload path.
-- Variant-aware customized GLB export built from immutable source + configuration.
-- Khronos validation of generated GLB before storage.
-- Derived OBJ/STL exports from the already-baked customized GLB; derived coordinates are millimeters.
-- Export artifacts use separate Supabase object keys rather than overwriting source assets.
+### Persistence và output
+- Project CRUD/list/load/duplicate có xác thực.
+- Snapshot cấu hình ModelVersion và đường reload chính xác.
+- Export GLB tùy chỉnh có hỗ trợ variant, được tạo từ source bất biến + configuration.
+- Kiểm tra GLB được sinh ra bằng Khronos trước khi lưu.
+- Export OBJ/STL được suy ra từ GLB tùy chỉnh đã bake; tọa độ output dùng millimeter.
+- Export artifact sử dụng object key Supabase riêng thay vì ghi đè source asset.
 
-## P1 — implemented in code
+## P1 — đã triển khai trong code
 
-### Materials / variants / styles / presets
-- Material library and compatibility checks.
-- Component variant catalog, private signed variant assets, replacement and AUTO_FIT metadata.
-- Variant composition in realtime viewer and final GLB export.
-- Style rule transactions and user presets through the same editor action pipeline.
+### Material / variant / style / preset
+- Thư viện material và kiểm tra compatibility.
+- Component variant catalog, signed variant asset riêng tư, replacement và metadata AUTO_FIT.
+- Ghép variant trong realtime viewer và final GLB export.
+- Transaction cho style rule và user preset đi qua cùng editor action pipeline.
 
 ### Render / 360 / AR
-- BullMQ render jobs with Blender headless worker.
-- Multi-view catalogue/design-analysis render.
-- Spin-360 frame render.
-- Current-configuration AR flow based on an exported GLB.
+- BullMQ render job với Blender headless worker.
+- Render multi-view cho catalog/phân tích thiết kế.
+- Render frame spin-360.
+- Luồng AR theo cấu hình hiện tại dựa trên một GLB đã export.
 
 ### AI
-- Structured Design Suggest request built from current configuration, manifest constraints and valid catalog IDs.
-- Server-side provider call with hourly quota.
-- Strict structured response validation plus Action/Constraint/Compatibility validation before user apply.
-- Server-side lifestyle visualization queue using a current product render as image reference; generated PNG stored privately in Supabase.
-- AI credentials remain server-side.
+- Request Design Suggest có cấu trúc, được tạo từ configuration hiện tại, constraint trong manifest và các catalog ID hợp lệ.
+- Gọi provider ở server với quota theo giờ.
+- Kiểm tra response có cấu trúc chặt chẽ cùng validation Action/Constraint/Compatibility trước khi người dùng áp dụng.
+- Hàng đợi lifestyle visualization phía server dùng current product render làm image reference; PNG được tạo ra lưu riêng tư trong Supabase.
+- Credential AI chỉ tồn tại phía server.
 
-### Manufacturability
-- Deterministic manufacturing rule engine against current configuration/material metadata.
-- Persisted issue reports and suggested editor actions where rules provide them.
-- Trimesh worker for geometry facts/issues against the **current customized GLB export**.
+### Khả năng sản xuất
+- Manufacturing rule engine theo cách xác định dựa trên configuration hiện tại và metadata material.
+- Lưu bền vững báo cáo issue và editor action gợi ý khi rule có cung cấp.
+- Trimesh worker tính geometry fact/issue trên **GLB tùy chỉnh hiện tại đã export**.
 
-## P2 / Week 6 — implemented in code
+## P2 / Tuần 6 — đã triển khai trong code
 
 ### Collection
-- Deterministic collection recommendation engine.
-- Spec weighting: 50% style, 25% material, 15% color, 10% other/category/component metadata.
-- Persisted collection catalog and score breakdown API/UI.
+- Collection recommendation engine theo cách xác định.
+- Trọng số theo spec: 50% style, 25% material, 15% color, 10% metadata khác/category/component.
+- Persisted collection catalog và API/UI trả breakdown điểm số.
 
 ### Workshop / RFQ
-- Workshop, QuoteRequest and Quote persistence.
-- RFQ canonical payload includes project/version, dimensions, component state, materials, manufacturing issues, preview object keys and export object key.
-- API reads hydrate fresh signed preview/export URLs; expiring signed URLs are not stored as business state.
-- Ownership checks for saved version/export/render/manufacturing resources.
-- Lifecycle `SUBMITTED → RECEIVED → ACCEPTED | REJECTED`, plus lazy `EXPIRED` transition for overdue requests.
+- Persistence cho Workshop, QuoteRequest và Quote.
+- RFQ canonical payload bao gồm project/version, dimensions, trạng thái component, material, manufacturing issue, preview object key và export object key.
+- API read sẽ hydrate signed preview/export URL mới; signed URL hết hạn không được lưu làm business state.
+- Kiểm tra quyền sở hữu cho saved version/export/render/manufacturing resource.
+- Vòng đời `SUBMITTED → RECEIVED → ACCEPTED | REJECTED`, cùng lazy transition sang `EXPIRED` cho request quá hạn.
 
-## QA / hardening implemented
+## QA / hardening đã triển khai
 
-- Four required GLB fixture categories:
-  1. proper components,
-  2. one mesh with disconnected islands,
-  3. single continuous mesh,
-  4. multi-material model.
-- Fixtures are validated with Khronos glTF Validator in executable tests.
-- Domain tests cover action/constraint/compatibility/dependency/unit/manufacturing/version/preset/collection logic.
-- Critical-flow integration test covers Lock guard, dimension/material/color, Undo/Redo and exact configuration serialization/reload.
-- Viewer owns and disposes cloned GPU resources; GLTF/variant caches are cleared on teardown.
-- App-level user-facing error boundary avoids raw production stack trace UI.
-- CI runs Prisma generation, Python worker syntax validation, tests and production TypeScript/Next builds.
-- Asset analysis/render/AI/manufacturability emit structured duration/outcome logs; other workers retain persistent Job lifecycle/failure records.
-- Production deployment runbook and idempotent private Supabase bucket setup command.
+- Bốn nhóm GLB fixture bắt buộc:
+  1. component chuẩn,
+  2. một mesh có các island rời rạc,
+  3. một mesh liên tục duy nhất,
+  4. model multi-material.
+- Fixture được kiểm tra bằng Khronos glTF Validator trong test thực thi được.
+- Domain test bao phủ logic action/constraint/compatibility/dependency/unit/manufacturing/version/preset/collection.
+- Critical-flow integration test bao phủ Lock guard, dimension/material/color, Undo/Redo và serialization/reload configuration chính xác.
+- Viewer sở hữu và dispose các GPU resource đã clone; cache GLTF/variant được clear khi teardown.
+- Error boundary ở cấp app hiển thị lỗi thân thiện với người dùng và tránh hiển thị raw production stack trace.
+- CI chạy Prisma generation, kiểm tra syntax Python worker, test và production build TypeScript/Next.
+- Asset analysis/render/AI/manufacturability phát structured log cho duration/outcome; các worker khác vẫn lưu Job lifecycle/failure record bền vững.
+- Runbook triển khai production và lệnh setup private Supabase bucket có tính idempotent.
 
-## Evidence gaps before declaring the full specification demonstrably Done
+## Các khoảng trống bằng chứng trước khi có thể tuyên bố toàn bộ specification đã hoàn tất một cách chứng minh được
 
-These are intentionally **not** marked complete yet:
+Các mục sau chủ động **chưa được đánh dấu hoàn tất**:
 
-1. **Browser-level full-system E2E:** CI does not currently run Playwright/Cypress against live Postgres + Redis + Supabase Auth/Storage + all workers. The current critical-flow test is domain/integration level.
-2. **Live export round-trip automation:** every generated GLB is validator-checked in the export worker, but CI does not currently run a live `export → signed download → import/analyze again` worker round trip.
-3. **External runtime smoke coverage:** Blender, Trimesh jobs, Supabase signed storage and OpenAI provider calls require deployed/native/external services and are not executed in standard repository CI.
-4. **RFQ preview automation:** RFQ accepts a verified completed render and then carries preview images, but the current web convenience flow does not force a Blender preview render before every RFQ; preview arrays may be empty.
-5. **Separate manufacturing-issue AI explanation:** structured design suggestions and deterministic/geometry manufacturing reports exist, but there is no dedicated provider-backed endpoint whose sole purpose is to explain a manufacturing issue.
-6. **Vendor metrics backend:** structured logs and metric-friendly duration fields exist, but Prometheus/Datadog/OpenTelemetry export is deployment-specific and not bundled.
-7. **Dependency/browser compatibility audit:** package peer dependency alignment and real-device/browser AR/performance still require environment-level verification.
+1. **Browser-level full-system E2E:** CI hiện không chạy Playwright/Cypress với Postgres + Redis + Supabase Auth/Storage + toàn bộ worker thật. Critical-flow test hiện tại ở mức domain/integration.
+2. **Tự động hóa live export round-trip:** mọi GLB được sinh ra đều được validator kiểm tra trong export worker, nhưng CI hiện không chạy round trip worker thật `export → signed download → import/analyze lại`.
+3. **Smoke coverage cho external runtime:** Blender, Trimesh job, Supabase signed storage và OpenAI provider call cần service native/external đã deploy và không được chạy trong standard repository CI.
+4. **Tự động hóa preview RFQ:** RFQ chấp nhận một completed render đã được xác minh và sau đó mang các preview image, nhưng luồng tiện ích web hiện tại không bắt buộc Blender preview render trước mọi RFQ; preview array có thể rỗng.
+5. **AI explanation riêng cho manufacturing issue:** structured design suggestion và deterministic/geometry manufacturing report đã có, nhưng chưa có endpoint provider-backed riêng chỉ dùng để giải thích manufacturing issue.
+6. **Vendor metrics backend:** structured log và duration field phù hợp cho metric đã có, nhưng việc export sang Prometheus/Datadog/OpenTelemetry phụ thuộc deployment và chưa được đóng gói sẵn.
+7. **Audit dependency/browser compatibility:** việc căn chỉnh peer dependency của package và kiểm chứng AR/performance trên thiết bị/trình duyệt thật vẫn cần kiểm tra ở cấp môi trường.
 
-See `PHASE1_GAP_AUDIT.md` for the 22-step Definition-of-Done mapping.
+Xem `PHASE1_GAP_AUDIT.md` để biết mapping 22 bước Definition-of-Done.
