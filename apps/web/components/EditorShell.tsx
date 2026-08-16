@@ -65,6 +65,8 @@ function AssetPreparation() {
 
   const candidate = analysis?.componentCandidates.find((item) => item.id === component.id);
   const componentState = configuration?.components[component.id];
+  const showRegionMapping =
+    analysis?.stats.meshes === 1 && Boolean(candidate && candidate.regionIds.length > 1);
 
   const setAxis = (axis: 'x' | 'y' | 'z', checked: boolean) => {
     patchComponentDefinition(component.id, {
@@ -117,6 +119,10 @@ function AssetPreparation() {
   return (
     <>
       <div className="eyebrow">Asset Preparation</div>
+      <p className="hint">
+        UNKNOWN / fixed is the safe default. Mark only the components you want to customize as
+        Editable, then choose their allowed axes and constraints.
+      </p>
       <label>Name</label>
       <input
         value={component.name}
@@ -233,9 +239,10 @@ function AssetPreparation() {
         ))}
       </div>
 
-      {candidate && (
+      {showRegionMapping && candidate && (
         <div className="warning">
-          {candidate.regionIds.length} geometry region(s).{' '}
+          Single-mesh asset: {candidate.regionIds.length} disconnected geometry region(s) are
+          available as preparation candidates.{' '}
           <button
             onClick={() =>
               patchComponentDefinition(component.id, { sourceRegionIds: candidate.regionIds })
@@ -511,6 +518,10 @@ export default function EditorShell() {
             : 'Unlocked · Place',
     [store.phase, store.configuration?.placement.locked],
   );
+  const visibleWarnings =
+    store.analysis?.warnings.filter((warning) => warning.severity !== 'INFO').slice(0, 3) ?? [];
+  const infoNoteCount =
+    store.analysis?.warnings.filter((warning) => warning.severity === 'INFO').length ?? 0;
 
   const upload = async (file?: File) => {
     if (!file) return;
@@ -615,11 +626,17 @@ export default function EditorShell() {
       <div className="layout">
         <aside className="panel">
           <div className="eyebrow">Components</div>
-          {store.analysis?.warnings.slice(0, 3).map((warning) => (
+          {visibleWarnings.map((warning) => (
             <div className="warning" key={warning.code + warning.sourceId}>
               {warning.message}
             </div>
           ))}
+          {infoNoteCount > 0 && (
+            <p className="hint">
+              {infoNoteCount} non-blocking model note(s) hidden. Asset status “ready” means GLB
+              validation and preparation completed successfully.
+            </p>
+          )}
           {store.manifest?.components.map((component) => (
             <button
               key={component.id}

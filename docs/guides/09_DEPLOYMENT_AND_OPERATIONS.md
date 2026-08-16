@@ -20,7 +20,7 @@ Mỗi service có thể scale/restart riêng.
 
 ## 2. Các managed service cần có
 
-- PostgreSQL tương thích phiên bản 16.
+- **Supabase Database** cho database PostgreSQL của ứng dụng.
 - Redis tương thích BullMQ, dùng `noeviction`.
 - Supabase Auth + private Storage.
 - OpenAI nếu bật tính năng AI.
@@ -30,7 +30,17 @@ Runtime native:
 - Python cho định dạng export dẫn xuất và geometry.
 - Blender cho render worker.
 
-## 3. Build production
+## 3. Kết nối database production
+
+Prisma vẫn dùng:
+
+```env
+DATABASE_URL=...
+```
+
+`DATABASE_URL` phải trỏ tới Supabase Database. Với backend/worker chạy dạng process lâu dài, dùng direct connection khi network hỗ trợ hoặc Supavisor Session pooler. Xem [Supabase Database](../SUPABASE_DATABASE.md).
+
+## 4. Build production
 
 ```bash
 pnpm install --frozen-lockfile
@@ -38,7 +48,7 @@ pnpm --filter @product3d/api prisma:generate
 pnpm build
 ```
 
-## 4. Lần deploy đầu / thiết lập database
+## 5. Lần deploy đầu / thiết lập database
 
 ```bash
 pnpm --filter @product3d/api exec prisma migrate deploy
@@ -48,12 +58,12 @@ pnpm --filter @product3d/api prisma:seed
 
 Trong production lâu dài, `prisma:seed` nên được xem là bước bảo trì catalog/demo chứ không mặc định chạy lại sau mọi lần deploy nếu catalog do business quản lý.
 
-## 5. Thứ tự rollout
+## 6. Thứ tự rollout
 
 Thứ tự an toàn:
 
 ```text
-Prisma migration
+Prisma migration trên Supabase Database
 → API
 → worker
 → web
@@ -63,7 +73,7 @@ Lý do: API/worker phải hiểu schema mới trước khi web bắt đầu gử
 
 Nếu đổi queue payload không tương thích ngược, cần drain queue hoặc version queue contract.
 
-## 6. Tách môi trường
+## 7. Tách môi trường
 
 Tối thiểu nên có:
 
@@ -73,9 +83,9 @@ development/staging
 production
 ```
 
-Không dùng lại Supabase secret/OpenAI key của production cho CI có tính xác định.
+Nên dùng Supabase project riêng cho staging và production. Không dùng lại database password, Supabase secret/OpenAI key của production cho CI có tính xác định.
 
-## 7. Worker concurrency
+## 8. Worker concurrency
 
 Các biến hiện có gồm:
 
@@ -89,7 +99,7 @@ AI_VISUALIZATION_WORKER_CONCURRENCY=1
 
 Blender/geometry thường nặng CPU/RAM; bắt đầu với concurrency thấp rồi đo metric trước khi tăng.
 
-## 8. Health check
+## 9. Health check
 
 API:
 
@@ -109,7 +119,7 @@ Sau deploy nên chạy smoke test:
 8. Render nếu Blender đã bật.
 9. AI Suggest nếu provider đã bật.
 
-## 9. Metrics
+## 10. Metrics
 
 Endpoint:
 
@@ -132,7 +142,7 @@ Authorization: Bearer <METRICS_BEARER_TOKEN>
 
 Các nhóm metric được mô tả trong [../OBSERVABILITY.md](../OBSERVABILITY.md).
 
-## 10. Log
+## 11. Log
 
 API/worker nên chuyển stdout/stderr vào nền tảng logging tập trung.
 
@@ -146,9 +156,9 @@ Khi debug job ở production, tối thiểu nên correlation theo:
 
 Không log secret/token/private signed URL đầy đủ nếu không cần thiết.
 
-## 11. Vận hành Storage
+## 12. Vận hành Storage
 
-Private artifact phải giữ object key trong DB.
+Private artifact phải giữ object key trong Supabase Database.
 
 Nếu cần cho người dùng tải xuống:
 
@@ -160,7 +170,7 @@ kiểm tra ownership
 
 Không chuyển bucket thành public chỉ để đơn giản hóa frontend.
 
-## 12. Xác nhận staging
+## 13. Xác nhận staging
 
 Repo có workflow staging E2E chạy thủ công. Hãy cấu hình GitHub environment `staging` với:
 
@@ -170,17 +180,18 @@ STAGING_E2E_EMAIL
 STAGING_E2E_PASSWORD
 ```
 
-Sau mỗi thay đổi lớn ở storage/job/export, chạy staging E2E để kiểm tra live orchestration.
+Sau mỗi thay đổi lớn ở database/storage/job/export, chạy staging E2E để kiểm tra live orchestration.
 
-## 13. Rollback
+## 14. Rollback
 
 - Application service có thể rollback độc lập nếu schema/queue contract còn tương thích.
 - Database rollback nên dùng corrective migration rõ ràng.
 - Không tự động đảo ngược destructive migration.
 - Source asset bất biến giúp rollback app mà không làm mất original GLB.
 
-## 14. Tài liệu liên quan
+## 15. Tài liệu liên quan
 
+- [../SUPABASE_DATABASE.md](../SUPABASE_DATABASE.md)
 - [../PRODUCTION_DEPLOYMENT.md](../PRODUCTION_DEPLOYMENT.md)
 - [../OBSERVABILITY.md](../OBSERVABILITY.md)
 - [05 - Dữ liệu, xác thực và Storage](05_DATA_AUTH_STORAGE.md)

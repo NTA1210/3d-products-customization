@@ -8,10 +8,11 @@ Nếu bạn mới vào repository hoặc cần biết **cách chạy, đọc, s�
 
 **[`docs/SOURCE_CODE_GUIDE.md`](docs/SOURCE_CODE_GUIDE.md)**
 
-Guide chính đóng vai trò mục lục và dẫn tới các tài liệu riêng theo chủ đề: setup local, kiến trúc, web editor, API, database/Supabase, worker, AI/render/manufacturing, testing/CI, deployment, troubleshooting và hướng dẫn mở rộng.
+Guide chính đóng vai trò mục lục và dẫn tới các tài liệu riêng theo chủ đề: setup local, kiến trúc, web editor, API, Supabase Database/Auth/Storage, worker, AI/render/manufacturing, testing/CI, deployment, troubleshooting và hướng dẫn mở rộng.
 
 ## Các khả năng đã triển khai
 
+- Supabase Database làm database chính, truy cập qua Prisma.
 - Supabase Auth và private Supabase Storage với signed upload/download grant có thời hạn ngắn.
 - Import GLB, Khronos validation, glTF Transform normalization, stable glTF source-index ID và phân tích candidate geometry-island rời rạc.
 - Asset Preparation với cấu hình semantic role/editability/axis/range/material/variant/dependency và manifest được lưu bền vững.
@@ -19,7 +20,7 @@ Guide chính đóng vai trò mục lục và dẫn tới các tài liệu riêng
 - Chọn/highlight component, dimension/position/rotation, material/color, delete/restore/reset và chuyển đổi đơn vị (`mm`, `cm`, `inch`).
 - Pipeline dùng chung Action / Constraint / Compatibility / Dependency với Undo/Redo và state có thể serialize.
 - Component variant với metadata anchor/auto-fit; transaction cho style và user preset.
-- Project dùng Supabase, version configuration chính xác, reload và duplicate.
+- Project/version/configuration lưu trong Supabase Database, hỗ trợ reload và duplicate.
 - Export customized GLB có hỗ trợ variant và Khronos re-validation; export OBJ/STL dẫn xuất theo tọa độ millimeter.
 - Blender multi-view và spin-360 render job; AR preview theo configuration hiện tại.
 - Structured AI Design Suggest action với quota/provider call ở server và validation trước khi áp dụng.
@@ -44,30 +45,31 @@ Guide chính đóng vai trò mục lục và dẫn tới các tài liệu riêng
 ## Yêu cầu local
 
 - Node.js 22 và pnpm 9.x.
-- Docker cho PostgreSQL + Redis local, hoặc managed service tương đương.
-- Một Supabase project cho Auth + private Storage.
+- Docker nếu muốn chạy Redis local cho BullMQ.
+- Một Supabase project cho **Database + Auth + private Storage**.
 - Python 3 cho geometry analysis và export dẫn xuất OBJ/STL.
 - Blender cho render/360 job.
 - OpenAI API access chỉ khi bật AI Suggest / lifestyle visualization.
 
-Supabase thay thế hướng phát triển MinIO/S3 trước đây. Trình duyệt chỉ dùng Supabase publishable key; `SUPABASE_SECRET_KEY` chỉ ở phía server.
+Supabase thay thế PostgreSQL local và hướng MinIO/S3 trước đây. Prisma vẫn dùng provider `postgresql` vì Supabase Database chính là PostgreSQL được Supabase quản lý. Trình duyệt chỉ dùng Supabase publishable key; `DATABASE_URL` và `SUPABASE_SECRET_KEY` chỉ ở phía server/worker.
 
 ## Thiết lập local
 
-1. Copy `.env.example` thành `.env` và điền giá trị Supabase.
-2. Khởi động dependency database/queue local:
+1. Copy `.env.example` thành `.env`.
+2. Trong Supabase Dashboard bấm **Connect**, copy Session pooler connection string port `5432` vào `DATABASE_URL`, rồi điền các key Supabase còn lại. Xem [`docs/SUPABASE_DATABASE.md`](docs/SUPABASE_DATABASE.md).
+3. Khởi động Redis local:
 
    ```bash
    docker compose up -d
    ```
 
-3. Cài dependency Node:
+4. Cài dependency Node:
 
    ```bash
    pnpm install
    ```
 
-4. Chuẩn bị Prisma và database:
+5. Chuẩn bị Prisma, Supabase Database và Storage:
 
    ```bash
    pnpm --filter @product3d/api prisma:generate
@@ -76,15 +78,15 @@ Supabase thay thế hướng phát triển MinIO/S3 trước đây. Trình duy�
    pnpm --filter @product3d/api prisma:seed
    ```
 
-5. Với geometry worker và OBJ/STL worker:
+6. Với geometry worker và OBJ/STL worker:
 
    ```bash
    python -m pip install -r workers/geometry/requirements.txt
    python -m pip install -r workers/export/requirements.txt
    ```
 
-6. Đảm bảo Blender có thể gọi bằng lệnh `blender` hoặc đặt `BLENDER_BIN` nếu cần render job.
-7. Khởi động TypeScript workspace cho môi trường phát triển:
+7. Đảm bảo Blender có thể gọi bằng lệnh `blender` hoặc đặt `BLENDER_BIN` nếu cần render job.
+8. Khởi động TypeScript workspace cho môi trường phát triển:
 
    ```bash
    pnpm dev
@@ -99,11 +101,12 @@ Background worker là các process độc lập và cần được start/deploy 
 
 CI chính hiện kiểm tra Prisma generation, syntax Python worker, thực thi Trimesh geometry analysis trên cả bốn GLB fixture bắt buộc, coverage domain/integration bằng Vitest, production workspace build và Playwright/Chromium critical-flow E2E.
 
-Browser CI chủ động mock network boundary bên ngoài của Supabase/API để regression test có tính xác định. Một workflow staging chạy thủ công riêng đã có để kiểm tra live Supabase/Redis/PostgreSQL/worker và luồng export→re-import. Blender, OpenAI và AR trên thiết bị thật vẫn cần runtime/provider/device tương ứng được cấu hình và được theo dõi rõ ràng thay vì tự động coi compilation là bằng chứng certification.
+Browser CI chủ động mock network boundary bên ngoài của Supabase/API để regression test có tính xác định. Một workflow staging chạy thủ công riêng đã có để kiểm tra live Supabase Database/Auth/Storage + Redis + worker và luồng export→re-import. Blender, OpenAI và AR trên thiết bị thật vẫn cần runtime/provider/device tương ứng được cấu hình và được theo dõi rõ ràng thay vì tự động coi compilation là bằng chứng certification.
 
 Xem thêm:
 
 - `docs/SOURCE_CODE_GUIDE.md` — cách sử dụng và bảo trì toàn bộ source tree.
+- `docs/SUPABASE_DATABASE.md` — cấu hình database Supabase cho Prisma.
 - `docs/IMPLEMENTATION_STATUS.md` — ma trận tính năng/bằng chứng.
 - `docs/PHASE1_GAP_AUDIT.md` — audit Definition-of-Done theo specification.
 - `docs/API.md` — bề mặt HTTP đã triển khai.
