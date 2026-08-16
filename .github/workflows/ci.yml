@@ -18,7 +18,11 @@ jobs:
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm --filter @product3d/api prisma:generate
       - name: Validate Python worker syntax
-        run: python -m py_compile workers/export/convert.py workers/geometry/analyze.py workers/render/render.py
+        run: python -m py_compile workers/export/convert.py workers/geometry/analyze.py workers/render/render.py tests/geometry_worker_smoke.py
+      - name: Install geometry worker runtime
+        run: python -m pip install --disable-pip-version-check -r workers/geometry/requirements.txt
+      - name: Exercise Trimesh geometry worker
+        run: python tests/geometry_worker_smoke.py
       - run: pnpm test
       - name: Build
         id: build
