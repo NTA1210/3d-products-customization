@@ -72,6 +72,10 @@ function AssetPreparation() {
   const continuousMesh = analysis?.warnings.find(
     (warning) => warning.code === 'SINGLE_CONTINUOUS_MESH',
   );
+  const canResize =
+    component.editable &&
+    component.scalingMode === 'AXIS_SCALE' &&
+    Object.values(component.editableAxes).some(Boolean);
 
   const setAxis = (axis: 'x' | 'y' | 'z', checked: boolean) => {
     patchComponentDefinition(component.id, {
@@ -106,6 +110,31 @@ function AssetPreparation() {
     });
   };
 
+  const enableFullCustomization = (componentId = component.id) =>
+    patchComponentDefinition(componentId, {
+      editable: true,
+      scalingMode: 'AXIS_SCALE',
+      editableAxes: { x: true, y: true, z: true },
+    });
+
+  const enableSurfaceCustomization = () =>
+    patchComponentDefinition(component.id, {
+      editable: true,
+      scalingMode: 'FIXED',
+      editableAxes: { x: false, y: false, z: false },
+    });
+
+  const lockCustomization = () =>
+    patchComponentDefinition(component.id, {
+      editable: false,
+      scalingMode: 'FIXED',
+      editableAxes: { x: false, y: false, z: false },
+    });
+
+  const enableAllComponents = () => {
+    for (const item of manifest.components) enableFullCustomization(item.id);
+  };
+
   const save = async () => {
     if (!assetId) return;
     setSaving(true);
@@ -125,25 +154,56 @@ function AssetPreparation() {
     <>
       <div className="eyebrow">Asset Preparation</div>
       <p className="hint">
-        UNKNOWN / fixed là mặc định an toàn. Chỉ đánh dấu Editable cho những part thực sự được
-        phép tùy chỉnh, sau đó chọn trục và constraint tương ứng.
+        UNKNOWN / fixed là mặc định an toàn. Chọn part, xác nhận quyền tùy chỉnh rồi lưu Manifest.
       </p>
 
       {regionComponents.length > 1 && (
         <div className="warning">
-          Single-mesh asset đã được tách thành {regionComponents.length} geometry region candidate(s).
-          Mỗi region là một vùng hình học độc lập để bạn xác nhận, không phải semantic role tự động.
-          Hãy đổi Name/Role trước khi cho phép chỉnh sửa.
+          Single-mesh asset đã được tách thành {regionComponents.length} connected geometry
+          component(s). Đây là boundary hình học, không phải semantic role tự động. Hãy đổi
+          Name/Role nếu cần trước khi cho phép chỉnh sửa.
         </div>
       )}
       {isRegionComponent && (
         <p className="hint">
-          Geometry source: {component.sourceRegionIds?.join(', ')}. Region này có thể được chỉnh
-          độc lập sau khi bạn bật Editable.
+          Geometry source: {component.sourceRegionIds?.join(', ')}. Part này có thể được chỉnh độc
+          lập sau khi bạn bật quyền Customize.
         </p>
       )}
       {tooManyRegions && <div className="warning">{tooManyRegions.message}</div>}
       {continuousMesh && <div className="warning">{continuousMesh.message}</div>}
+
+      <div className="customization-card" data-testid="preparation-customization">
+        <div className="eyebrow">Quyền Customize</div>
+        <strong>{component.editable ? 'Đã bật tùy chỉnh' : 'Part đang bị khóa'}</strong>
+        <p className="hint compact-hint">
+          Màu/Vật liệu cần <b>Editable</b>. Kích thước cần thêm <b>AXIS_SCALE</b> và trục được phép.
+        </p>
+        <div className="capability-grid">
+          <span className={canResize ? 'capability on' : 'capability'}>
+            Kích thước {canResize ? 'ON' : 'OFF'}
+          </span>
+          <span className={component.editable ? 'capability on' : 'capability'}>
+            Màu / Vật liệu {component.editable ? 'ON' : 'OFF'}
+          </span>
+        </div>
+        <button className="primary full" type="button" onClick={() => enableFullCustomization()}>
+          Bật Kích thước + Màu/Vật liệu
+        </button>
+        <div className="row compact-row">
+          <button type="button" onClick={enableSurfaceCustomization}>
+            Chỉ Màu/Vật liệu
+          </button>
+          <button type="button" onClick={lockCustomization}>
+            Khóa part
+          </button>
+        </div>
+        {manifest.components.length > 1 && (
+          <button className="full" type="button" onClick={enableAllComponents}>
+            Bật Customize cho tất cả {manifest.components.length} part
+          </button>
+        )}
+      </div>
 
       <label>Name</label>
       <input
@@ -175,6 +235,7 @@ function AssetPreparation() {
 
       <label className="check">
         <input
+          aria-label="Editable"
           type="checkbox"
           checked={component.editable}
           onChange={(event) =>
@@ -194,6 +255,7 @@ function AssetPreparation() {
       </label>
 
       <div className="field-group">
+        <div className="eyebrow">Trục được phép resize</div>
         {(['x', 'y', 'z'] as const).map((axis) => (
           <label className="check inline" key={axis}>
             <input
@@ -210,7 +272,7 @@ function AssetPreparation() {
       {(['width', 'height', 'depth'] as const).map((dimension) => (
         <div key={dimension}>
           <label>{dimension} min/max mm</label>
-          <div className="row">
+          <div className="row compact-row">
             <input
               type="number"
               value={component.constraints[dimension]?.min ?? ''}
@@ -249,6 +311,8 @@ function AssetPreparation() {
       />
 
       <div className="field-group">
+        <div className="eyebrow">Material categories</div>
+        <p className="hint compact-hint">Không chọn category nào = cho phép tất cả material tương thích.</p>
         {materialCategories.map((category) => (
           <label className="check" key={category}>
             <input
@@ -279,6 +343,9 @@ function AssetPreparation() {
       <button className="primary full" disabled={!assetId || saving} onClick={() => void save()}>
         {saving ? 'Saving…' : 'Save Manifest & Open Editor'}
       </button>
+      <p className="hint compact-hint">
+        Sau khi mở Editor: đặt model → <b>Lock placement</b> → Size / Material / Color sẽ dùng được.
+      </p>
     </>
   );
 }
@@ -294,7 +361,8 @@ function Inspector() {
   if (!store.configuration.placement.locked) {
     return (
       <>
-        <div className="eyebrow">Placement</div>
+        <div className="eyebrow">Bước 1 · Placement</div>
+        <h3>Đặt model trước khi Customize</h3>
         <div className="segmented">
           <button
             className={store.placementMode === 'translate' ? 'active' : ''}
@@ -309,6 +377,19 @@ function Inspector() {
             Rotate
           </button>
         </div>
+        <div className="customization-card locked-card" data-testid="customization-locked">
+          <div className="eyebrow">Bước 2 · Customize</div>
+          <strong>Size · Material · Color đang chờ Lock</strong>
+          <p className="hint compact-hint">
+            Workflow bắt buộc là Place → Lock → Customize. Các control không bị mất; chúng sẽ mở
+            ngay sau khi Lock placement.
+          </p>
+          <div className="capability-grid">
+            <span className="capability">Kích thước</span>
+            <span className="capability">Màu / Vật liệu</span>
+            <span className="capability">Move / Rotate part</span>
+          </div>
+        </div>
         <button className="primary full" onClick={store.toggleLock}>
           Lock placement
         </button>
@@ -319,8 +400,9 @@ function Inspector() {
   if (!definition || !state) {
     return (
       <>
+        <div className="eyebrow">Customize</div>
+        <p className="muted">Chọn một component trên model hoặc sidebar để chỉnh.</p>
         <StyleVariantTools />
-        <p className="muted">Select a component.</p>
       </>
     );
   }
@@ -337,193 +419,242 @@ function Inspector() {
       `Set ${axis.toLowerCase()}`,
     );
 
+  const setColor = (color: string) =>
+    store.dispatch(
+      {
+        type: 'SET_COLOR',
+        componentId: definition.id,
+        color,
+        source: 'MANUAL',
+      },
+      'Change color',
+    );
+
   const canResize =
     definition.editable &&
     definition.scalingMode === 'AXIS_SCALE' &&
     Object.values(definition.editableAxes).some(Boolean);
+  const availableMaterials = demoMaterials.filter(
+    (material) =>
+      !definition.allowedMaterialCategories?.length ||
+      definition.allowedMaterialCategories.includes(material.category),
+  );
 
   return (
     <>
-      <StyleVariantTools />
-      <div className="row">
-        <div className="eyebrow">Inspector</div>
-        <select value={unit} onChange={(event) => setUnit(event.target.value as LengthUnit)}>
+      <div className="customize-heading" data-testid="customize-panel">
+        <div>
+          <div className="eyebrow">Customize</div>
+          <h3>{definition.name}</h3>
+        </div>
+        <select
+          aria-label="Length unit"
+          value={unit}
+          onChange={(event) => setUnit(event.target.value as LengthUnit)}
+        >
           <option value="mm">mm</option>
           <option value="cm">cm</option>
           <option value="inch">inch</option>
         </select>
       </div>
-      <h3>{definition.name}</h3>
 
-      <div className="eyebrow">Direct edit on model</div>
-      <div className="segmented">
-        <button
-          disabled={!definition.editable}
-          className={store.componentMode === 'translate' ? 'active' : ''}
-          onClick={() => store.setComponentMode('translate')}
-        >
-          Move
-        </button>
-        <button
-          disabled={!definition.editable}
-          className={store.componentMode === 'rotate' ? 'active' : ''}
-          onClick={() => store.setComponentMode('rotate')}
-        >
-          Rotate
-        </button>
-        <button
-          disabled={!canResize}
-          className={store.componentMode === 'scale' ? 'active' : ''}
-          onClick={() => store.setComponentMode('scale')}
-        >
-          Resize
-        </button>
-      </div>
       {!definition.editable && (
-        <p className="hint">Part này đang Fixed. Bật Editable trong Asset Preparation để chỉnh.</p>
-      )}
-      {definition.editable && !canResize && (
-        <p className="hint">
-          Resize cần Scaling = AXIS_SCALE và ít nhất một trục X/Y/Z được cho phép.
-        </p>
+        <div className="warning">
+          <strong>Part này đang Fixed.</strong>
+          <div>Size, Material và Color được hiển thị bên dưới nhưng đang khóa.</div>
+          <button
+            className="full"
+            type="button"
+            onClick={() => useEditorStore.setState({ phase: 'PREPARE', error: undefined })}
+          >
+            Mở Asset Preparation để bật Customize
+          </button>
+        </div>
       )}
 
-      {(['WIDTH', 'HEIGHT', 'DEPTH'] as const).map((axis) => {
-        const key = axis.toLowerCase() as 'width' | 'height' | 'depth';
-        const mapped = store.manifest!.axisMapping[key];
-        const enabled =
-          definition.editable &&
-          definition.editableAxes[mapped] &&
-          definition.scalingMode === 'AXIS_SCALE';
-        const value = fromMm(state.dimensionsMm[key], unit);
-        const originalMm = Math.max(state.originalDimensionsMm[key], 0.001);
-        const configured = definition.constraints[key];
-        const minMm = Math.min(
-          state.dimensionsMm[key],
-          configured?.min ?? Math.max(originalMm * 0.25, 0.001),
-        );
-        const maxMm = Math.max(state.dimensionsMm[key], configured?.max ?? originalMm * 2);
-        const step = unit === 'mm' ? 1 : unit === 'cm' ? 0.1 : 0.01;
-        return (
-          <div key={axis} className="field-group">
-            <label>
-              {axis} ({unit})
-            </label>
-            <input
-              type="range"
-              aria-label={`${axis} slider`}
-              disabled={!enabled}
-              min={fromMm(minMm, unit)}
-              max={fromMm(maxMm, unit)}
-              step={step}
-              value={value}
-              onChange={(event) => dimension(axis, Number(event.target.value))}
-            />
-            <input
-              type="number"
-              disabled={!enabled}
-              step={step}
-              value={Math.round(value * 1000) / 1000}
-              onChange={(event) => dimension(axis, Number(event.target.value))}
-            />
-          </div>
-        );
-      })}
-
-      <div className="field-group">
-        <span className="muted">Position ({unit})</span>
-        {(['X', 'Y', 'Z'] as const).map((axis, index) => (
-          <div key={axis}>
-            <label>{axis}</label>
-            <input
-              type="number"
-              disabled={!definition.editable}
-              value={Math.round(fromMm(state.transform.position[index], unit) * 1000) / 1000}
-              onChange={(event) =>
-                store.dispatch(
-                  {
-                    type: 'SET_POSITION',
-                    componentId: definition.id,
-                    axis,
-                    value: toMm(Number(event.target.value), unit),
-                    source: 'MANUAL',
-                  },
-                  `Move ${axis}`,
-                )
-              }
-            />
-          </div>
-        ))}
+      <div className="customization-card">
+        <div className="eyebrow">Chỉnh trực tiếp trên model</div>
+        <div className="segmented">
+          <button
+            disabled={!definition.editable}
+            className={store.componentMode === 'translate' ? 'active' : ''}
+            onClick={() => store.setComponentMode('translate')}
+          >
+            Move
+          </button>
+          <button
+            disabled={!definition.editable}
+            className={store.componentMode === 'rotate' ? 'active' : ''}
+            onClick={() => store.setComponentMode('rotate')}
+          >
+            Rotate
+          </button>
+          <button
+            disabled={!canResize}
+            className={store.componentMode === 'scale' ? 'active' : ''}
+            onClick={() => store.setComponentMode('scale')}
+          >
+            Resize
+          </button>
+        </div>
+        {definition.editable && !canResize && (
+          <p className="hint compact-hint">
+            Resize cần Scaling = AXIS_SCALE và ít nhất một trục X/Y/Z được cho phép.
+          </p>
+        )}
       </div>
 
-      <div className="field-group">
-        <span className="muted">Rotation (degrees)</span>
-        {(['X', 'Y', 'Z'] as const).map((axis, index) => (
-          <div key={axis}>
-            <label>{axis}</label>
-            <input
-              type="number"
-              disabled={!definition.editable}
-              value={Math.round((state.transform.rotation[index] * 180 * 100) / Math.PI) / 100}
-              onChange={(event) =>
-                store.dispatch(
-                  {
-                    type: 'SET_ROTATION',
-                    componentId: definition.id,
-                    axis,
-                    value: (Number(event.target.value) * Math.PI) / 180,
-                    source: 'MANUAL',
-                  },
-                  `Rotate ${axis}`,
-                )
-              }
-            />
-          </div>
-        ))}
+      <div className="customization-card" data-testid="size-controls">
+        <div className="eyebrow">Kích thước</div>
+        {(['WIDTH', 'HEIGHT', 'DEPTH'] as const).map((axis) => {
+          const key = axis.toLowerCase() as 'width' | 'height' | 'depth';
+          const mapped = store.manifest!.axisMapping[key];
+          const enabled =
+            definition.editable &&
+            definition.editableAxes[mapped] &&
+            definition.scalingMode === 'AXIS_SCALE';
+          const value = fromMm(state.dimensionsMm[key], unit);
+          const originalMm = Math.max(state.originalDimensionsMm[key], 0.001);
+          const configured = definition.constraints[key];
+          const minMm = Math.min(
+            state.dimensionsMm[key],
+            configured?.min ?? Math.max(originalMm * 0.25, 0.001),
+          );
+          const maxMm = Math.max(state.dimensionsMm[key], configured?.max ?? originalMm * 2);
+          const step = unit === 'mm' ? 1 : unit === 'cm' ? 0.1 : 0.01;
+          return (
+            <div key={axis} className="dimension-control">
+              <div className="dimension-label">
+                <span>{axis}</span>
+                <small>{mapped.toUpperCase()} axis</small>
+              </div>
+              <input
+                type="range"
+                aria-label={`${axis} slider`}
+                disabled={!enabled}
+                min={fromMm(minMm, unit)}
+                max={fromMm(maxMm, unit)}
+                step={step}
+                value={value}
+                onChange={(event) => dimension(axis, Number(event.target.value))}
+              />
+              <div className="number-with-unit">
+                <input
+                  aria-label={`${axis} value`}
+                  type="number"
+                  disabled={!enabled}
+                  step={step}
+                  value={Math.round(value * 1000) / 1000}
+                  onChange={(event) => dimension(axis, Number(event.target.value))}
+                />
+                <span>{unit}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <label>Material</label>
-      <select
-        disabled={!definition.editable}
-        value={state.materialId ?? ''}
-        onChange={(event) =>
-          event.target.value &&
-          store.dispatch(
-            {
-              type: 'SET_MATERIAL',
-              componentId: definition.id,
-              materialId: event.target.value,
-              source: 'MANUAL',
-            },
-            'Change material',
-          )
-        }
-      >
-        <option value="">Original</option>
-        {demoMaterials.map((material) => (
-          <option key={material.id} value={material.id}>
-            {material.name}
-          </option>
-        ))}
-      </select>
+      <div className="customization-card" data-testid="surface-controls">
+        <div className="eyebrow">Màu sắc & Vật liệu</div>
+        <label>Material</label>
+        <select
+          disabled={!definition.editable}
+          value={state.materialId ?? ''}
+          onChange={(event) =>
+            event.target.value &&
+            store.dispatch(
+              {
+                type: 'SET_MATERIAL',
+                componentId: definition.id,
+                materialId: event.target.value,
+                source: 'MANUAL',
+              },
+              'Change material',
+            )
+          }
+        >
+          <option value="">Original</option>
+          {availableMaterials.map((material) => (
+            <option key={material.id} value={material.id}>
+              {material.name}
+            </option>
+          ))}
+        </select>
 
-      <label>Color</label>
-      <input
-        disabled={!definition.editable}
-        type="color"
-        value={state.color ?? '#b8895b'}
-        onChange={(event) =>
-          store.dispatch(
-            {
-              type: 'SET_COLOR',
-              componentId: definition.id,
-              color: event.target.value,
-              source: 'MANUAL',
-            },
-            'Change color',
-          )
-        }
-      />
+        <label>Color</label>
+        <div className="color-row">
+          <input
+            aria-label="Component color"
+            disabled={!definition.editable}
+            type="color"
+            value={state.color ?? '#b8895b'}
+            onChange={(event) => setColor(event.target.value)}
+          />
+          <input
+            aria-label="Component color hex"
+            disabled={!definition.editable}
+            type="text"
+            value={state.color ?? '#b8895b'}
+            onChange={(event) => /^#[0-9a-fA-F]{6}$/.test(event.target.value) && setColor(event.target.value)}
+          />
+        </div>
+        <p className="hint compact-hint">Thay đổi được preview realtime trên component đang chọn.</p>
+      </div>
+
+      <details className="advanced-controls">
+        <summary>Transform nâng cao</summary>
+        <div className="field-group">
+          <span className="muted">Position ({unit})</span>
+          {(['X', 'Y', 'Z'] as const).map((axis, index) => (
+            <div key={axis}>
+              <label>{axis}</label>
+              <input
+                type="number"
+                disabled={!definition.editable}
+                value={Math.round(fromMm(state.transform.position[index], unit) * 1000) / 1000}
+                onChange={(event) =>
+                  store.dispatch(
+                    {
+                      type: 'SET_POSITION',
+                      componentId: definition.id,
+                      axis,
+                      value: toMm(Number(event.target.value), unit),
+                      source: 'MANUAL',
+                    },
+                    `Move ${axis}`,
+                  )
+                }
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="field-group">
+          <span className="muted">Rotation (degrees)</span>
+          {(['X', 'Y', 'Z'] as const).map((axis, index) => (
+            <div key={axis}>
+              <label>{axis}</label>
+              <input
+                type="number"
+                disabled={!definition.editable}
+                value={Math.round((state.transform.rotation[index] * 180 * 100) / Math.PI) / 100}
+                onChange={(event) =>
+                  store.dispatch(
+                    {
+                      type: 'SET_ROTATION',
+                      componentId: definition.id,
+                      axis,
+                      value: (Number(event.target.value) * Math.PI) / 180,
+                      source: 'MANUAL',
+                    },
+                    `Rotate ${axis}`,
+                  )
+                }
+              />
+            </div>
+          ))}
+        </div>
+      </details>
 
       <div className="row">
         <button
@@ -560,6 +691,10 @@ function Inspector() {
           </button>
         )}
         <button onClick={store.toggleLock}>Unlock</button>
+      </div>
+
+      <div className="secondary-tools">
+        <StyleVariantTools />
       </div>
     </>
   );
