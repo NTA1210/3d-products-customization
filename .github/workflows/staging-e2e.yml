@@ -1,0 +1,38 @@
+name: Staging E2E
+on:
+  workflow_dispatch:
+
+jobs:
+  live-critical-flow:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+      STAGING_E2E_EMAIL: ${{ secrets.STAGING_E2E_EMAIL }}
+      STAGING_E2E_PASSWORD: ${{ secrets.STAGING_E2E_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile=false
+      - name: Validate required staging secrets
+        run: |
+          test -n "$STAGING_WEB_URL" || (echo "Missing STAGING_WEB_URL" && exit 1)
+          test -n "$STAGING_E2E_EMAIL" || (echo "Missing STAGING_E2E_EMAIL" && exit 1)
+          test -n "$STAGING_E2E_PASSWORD" || (echo "Missing STAGING_E2E_PASSWORD" && exit 1)
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Live Supabase / worker / export / re-import flow
+        run: pnpm exec playwright test --config=playwright.staging.config.ts
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-playwright-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
