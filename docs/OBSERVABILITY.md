@@ -1,36 +1,36 @@
-# Phase 1 observability
+# Khả năng quan sát của Phase 1
 
-The API exposes Prometheus-compatible metrics at `GET /api/metrics`.
+API cung cấp các metric tương thích Prometheus tại `GET /api/metrics`.
 
-## Security
+## Bảo mật
 
-- Local development may leave `METRICS_BEARER_TOKEN` empty.
-- Production/staging should set a strong `METRICS_BEARER_TOKEN` and configure the scraper with `Authorization: Bearer <token>`.
-- Browser telemetry is not public. `POST /api/metrics/client` requires the normal Supabase user session and currently accepts only `viewer_load_time`.
+- Môi trường phát triển local có thể để trống `METRICS_BEARER_TOKEN`.
+- Production/staging nên đặt một `METRICS_BEARER_TOKEN` mạnh và cấu hình scraper với `Authorization: Bearer <token>`.
+- Telemetry từ trình duyệt không phải endpoint công khai. `POST /api/metrics/client` yêu cầu session Supabase thông thường của người dùng và hiện chỉ chấp nhận `viewer_load_time`.
 
-## Sampling model
+## Mô hình lấy mẫu
 
-Worker processes run independently from the API, so background-job metrics are derived from persisted PostgreSQL records rather than process-local counters. `METRICS_SAMPLE_LIMIT` controls how many recent rows are sampled per metric family; the default is 10,000 and the accepted range is 100–50,000.
+Các worker chạy độc lập với API, vì vậy metric của background job được suy ra từ các bản ghi PostgreSQL đã lưu thay vì counter cục bộ trong từng process. `METRICS_SAMPLE_LIMIT` kiểm soát số lượng bản ghi gần nhất được lấy mẫu cho mỗi nhóm metric; mặc định là 10.000 và khoảng cho phép là 100–50.000.
 
-This makes asset, render, export, AI, and manufacturing signals visible even when the responsible worker ran in another process or container. Viewer load timing is client-reported and therefore remains process-local to the API instance unless the deployment's metrics backend aggregates multiple replicas.
+Cách này giúp các tín hiệu asset, render, export, AI và manufacturing vẫn quan sát được ngay cả khi worker chịu trách nhiệm chạy ở process hoặc container khác. Thời gian load viewer được client gửi lên và vì vậy vẫn là dữ liệu cục bộ theo từng API instance, trừ khi metrics backend của deployment tổng hợp nhiều replica.
 
-## Metric families
+## Các nhóm metric
 
-- `product3d_asset_total{status}` — recent assets by persisted status.
-- `asset_import_duration_seconds` — end-to-end asset lifetime for recent READY/FAILED assets.
-- `asset_analysis_duration_seconds` — analyze/normalize job duration.
-- `product3d_job_total{type,status}` — recent persisted background jobs.
-- `product3d_job_duration_seconds{type,status}` — persisted job lifetime.
-- `render_duration_seconds` — render job duration.
-- `export_duration_seconds` — export job duration.
-- `ai_request_count{type,status}` — recent AI requests.
-- `ai_request_failure{type}` — recent failed AI requests.
-- `product3d_manufacturability_check_total{status}` — recent manufacturability checks.
-- `product3d_render_request_total{mode,quality}` — recent render requests.
-- `average_model_triangle_count` — average analyzed triangle count in the sampled assets.
-- `viewer_load_time_seconds` — time from a new editor `assetUrl` to the loaded GLB mounting in the Three.js viewer.
+- `product3d_asset_total{status}` — số asset gần đây theo trạng thái đã lưu.
+- `asset_import_duration_seconds` — vòng đời end-to-end của các asset READY/FAILED gần đây.
+- `asset_analysis_duration_seconds` — thời lượng job analyze/normalize.
+- `product3d_job_total{type,status}` — các background job gần đây đã được lưu.
+- `product3d_job_duration_seconds{type,status}` — vòng đời job đã lưu.
+- `render_duration_seconds` — thời lượng render job.
+- `export_duration_seconds` — thời lượng export job.
+- `ai_request_count{type,status}` — các request AI gần đây.
+- `ai_request_failure{type}` — các request AI gần đây bị lỗi.
+- `product3d_manufacturability_check_total{status}` — các lần kiểm tra khả năng sản xuất gần đây.
+- `product3d_render_request_total{mode,quality}` — các request render gần đây.
+- `average_model_triangle_count` — số triangle trung bình của các asset được phân tích trong mẫu.
+- `viewer_load_time_seconds` — thời gian từ khi editor nhận `assetUrl` mới đến khi GLB đã load được mount vào Three.js viewer.
 
-## Prometheus example
+## Ví dụ Prometheus
 
 ```yaml
 scrape_configs:
@@ -44,16 +44,16 @@ scrape_configs:
       credentials: ${PRODUCT3D_METRICS_TOKEN}
 ```
 
-## Suggested alerts/dashboards
+## Cảnh báo/dashboard được đề xuất
 
-Start with:
+Nên bắt đầu với:
 
-- failed jobs by `type` and `status`,
-- AI failure count,
-- p95-equivalent trends calculated by the metrics backend from job durations,
-- export/render duration regression,
-- asset failure ratio,
-- average triangle count growth,
-- viewer load-time regression.
+- job thất bại theo `type` và `status`,
+- số lần AI lỗi,
+- xu hướng tương đương p95 được metrics backend tính từ thời lượng job,
+- regression về thời gian export/render,
+- tỷ lệ asset thất bại,
+- xu hướng tăng số triangle trung bình,
+- regression thời gian load viewer.
 
-The endpoint intentionally exposes raw recent-sample counters/sums rather than claiming production-certified percentiles. The deployment metrics backend should perform rate, ratio, percentile/trend, retention, and alert calculations.
+Endpoint chủ động cung cấp các counter/sum thô từ mẫu gần đây thay vì khẳng định có percentile đạt chuẩn production. Metrics backend của deployment nên thực hiện các phép tính rate, ratio, percentile/trend, retention và alert.
