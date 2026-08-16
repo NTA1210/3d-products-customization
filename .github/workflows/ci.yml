@@ -24,6 +24,8 @@ jobs:
       - name: Exercise Trimesh geometry worker
         run: python tests/geometry_worker_smoke.py
       - run: pnpm test
+      - name: Exercise region export and re-import
+        run: pnpm --filter @product3d/export-worker exec tsx ../../tests/export_region_smoke.ts
       - name: Build
         id: build
         continue-on-error: true
