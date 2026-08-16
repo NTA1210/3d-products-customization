@@ -16,6 +16,7 @@ test('live Supabase/worker critical flow exports and re-imports customized GLB',
   const glbInput=page.locator('input[type="file"][accept=".glb"]');
   await glbInput.setInputFiles(path.resolve('examples/fixtures/proper-components.glb'));
   await expect(page.locator('.component-card').first()).toBeVisible({timeout:180_000});
+  await expect(page.getByText('Asset: ready')).toBeVisible({timeout:180_000});
 
   await page.getByLabel('Editable').check();
   await page.getByLabel('Scaling').selectOption('AXIS_SCALE');
@@ -47,5 +48,5 @@ test('live Supabase/worker critical flow exports and re-imports customized GLB',
   await glbInput.setInputFiles({name:`roundtrip-${Date.now()}.glb`,mimeType:'model/gltf-binary',buffer:exported});
   await expect(page.getByText('Asset Preparation')).toBeVisible();
   await expect(page.locator('.component-card').first()).toBeVisible({timeout:180_000});
-  await expect(page.getByText(/Asset pipeline: ready/i)).toBeVisible({timeout:180_000});
+  await expect(page.getByText('Asset: ready')).toBeVisible({timeout:180_000});
 });
