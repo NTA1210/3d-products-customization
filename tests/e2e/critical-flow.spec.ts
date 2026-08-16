@@ -91,22 +91,28 @@ test('Import → prepare → select on model → lock → customize → undo/red
   await expect(page.getByText('Root scale review note.')).toHaveCount(0);
   await expect(page.getByText('Duplicate display-name note.')).toHaveCount(0);
 
-  await page.getByLabel('Editable').check();
-  await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
-  await page.locator('label.check.inline').filter({hasText:/^X$/}).locator('input[type="checkbox"]').check();
+  await expect(page.getByTestId('preparation-customization')).toBeVisible();
+  await page.getByRole('button',{name:'Bật Kích thước + Màu/Vật liệu'}).click();
+  await expect(page.getByText('Kích thước ON')).toBeVisible();
+  await expect(page.getByText('Màu / Vật liệu ON')).toBeVisible();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
 
+  await expect(page.getByTestId('customization-locked')).toBeVisible();
   await expect(page.getByRole('button',{name:'Lock placement'})).toBeVisible();
   await page.getByRole('button',{name:'Lock placement'}).click();
+  await expect(page.getByTestId('customize-panel')).toBeVisible();
+  await expect(page.getByTestId('size-controls')).toBeVisible();
+  await expect(page.getByTestId('surface-controls')).toBeVisible();
   await expect(page.getByRole('button',{name:'Move'}).last()).toBeEnabled();
   await expect(page.getByRole('button',{name:'Resize'})).toBeEnabled();
-  const width=page.locator('label:has-text("WIDTH (mm)")').locator('..').locator('input[type="number"]');
+  const width=page.getByLabel('WIDTH value');
   await expect(width).toBeEnabled();
   const initialWidth=await width.inputValue();
   const changedWidth=String(Math.max(1,Math.round(Number(initialWidth)*0.9)));
   await width.fill(changedWidth);
   await expect(width).toHaveValue(changedWidth);
   await expect(page.getByLabel('WIDTH slider')).toBeEnabled();
+  await expect(page.getByLabel('Component color',{exact:true})).toBeEnabled();
 
   const material=page.locator('label:has-text("Material") + select');
   await material.selectOption('mat_oak_light');
@@ -158,17 +164,18 @@ test('single-mesh disconnected geometry becomes separate preparation components'
   await page.locator('input[type="file"][accept=".glb"]').setInputFiles(path.resolve('examples/fixtures/disconnected-islands.glb'));
   await expect(page.getByText('Asset Preparation')).toBeVisible();
   await expect(page.locator('.component-card')).toHaveCount(2);
-  await expect(page.getByText(/Single-mesh asset đã được tách thành 2 geometry region candidate/)).toBeVisible();
+  await expect(page.getByText(/Single-mesh asset đã được tách thành 2 connected geometry component/)).toBeVisible();
   await expect(page.locator('.component-card').first()).toContainText('geometry region');
   await expect(page.locator('.source-id')).toContainText('_island_000');
 
-  await page.getByLabel('Editable').check();
-  await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
-  await page.locator('label.check.inline').filter({hasText:/^X$/}).locator('input[type="checkbox"]').check();
+  await page.getByRole('button',{name:'Bật Kích thước + Màu/Vật liệu'}).click();
+  await expect(page.getByText('Kích thước ON')).toBeVisible();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
+  await expect(page.getByTestId('customization-locked')).toBeVisible();
   await page.getByRole('button',{name:'Lock placement'}).click();
   await expect(page.getByRole('button',{name:'Move'}).last()).toBeEnabled();
   await expect(page.getByRole('button',{name:'Rotate'}).last()).toBeEnabled();
   await expect(page.getByRole('button',{name:'Resize'})).toBeEnabled();
   await expect(page.getByLabel('WIDTH slider')).toBeEnabled();
+  await expect(page.getByLabel('Component color',{exact:true})).toBeEnabled();
 });
