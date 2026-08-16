@@ -16,6 +16,26 @@ export type AssetPipelineStatus =
   | 'ready'
   | 'failed';
 
+export type AssetSummary = {
+  id: string;
+  name: string;
+  originalFilename: string;
+  status: string;
+  sizeBytes?: number | null;
+  thumbnailUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: { manifests: number; projects: number };
+};
+
+type AssetDetail = {
+  id: string;
+  name: string;
+  originalFilename: string;
+  status: string;
+  analysisJson?: unknown;
+};
+
 type ImportResponse = {
   asset: { id: string };
   upload: { bucket: string; path: string; token: string; expiresInSeconds: number };
@@ -142,6 +162,29 @@ export async function startAssetPipeline(
   throw new Error(
     'Asset processing timed out. Kiểm tra Redis và asset-processing worker rồi import lại GLB.',
   );
+}
+
+export const listAssets = () =>
+  expectJson<AssetSummary[]>(authFetch(`${apiRoot()}/assets`));
+
+export async function loadStoredAsset(assetId: string) {
+  const [asset, download, manifestRecord] = await Promise.all([
+    expectJson<AssetDetail>(authFetch(`${apiRoot()}/assets/${assetId}`)),
+    expectJson<{ url: string }>(
+      authFetch(`${apiRoot()}/assets/${assetId}/download?kind=source`),
+    ),
+    expectJson<{ manifestJson: unknown } | null>(
+      authFetch(`${apiRoot()}/assets/${assetId}/manifest`),
+    ),
+  ]);
+  return {
+    assetId: asset.id,
+    assetName: asset.originalFilename || `${asset.name}.glb`,
+    assetUrl: download.url,
+    status: asset.status,
+    analysis: asset.analysisJson ? AssetAnalysisSchema.parse(asset.analysisJson) : undefined,
+    manifest: manifestRecord ? ModelManifestSchema.parse(manifestRecord.manifestJson) : undefined,
+  };
 }
 
 export async function saveAssetManifest(assetId: string, manifest: ModelManifest) {
