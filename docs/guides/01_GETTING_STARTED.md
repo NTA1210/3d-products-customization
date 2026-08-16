@@ -6,8 +6,8 @@ Tài liệu này dùng để chạy source lần đầu trên máy local.
 
 - Node.js 22.
 - pnpm 9.x (`packageManager` của repo là `pnpm@9.12.3`).
-- Docker nếu dùng PostgreSQL + Redis local.
-- Một Supabase project cho Auth + private Storage.
+- Docker nếu muốn chạy Redis local cho BullMQ.
+- Một Supabase project cho **Database + Auth + private Storage**.
 - Python 3 cho geometry worker và chuyển đổi OBJ/STL.
 - Blender nếu muốn chạy render / 360.
 - OpenAI API key chỉ khi bật AI Suggest hoặc lifestyle visualization.
@@ -38,10 +38,12 @@ pnpm check
 cp .env.example .env
 ```
 
+Trong Supabase Dashboard, bấm **Connect** và copy **Session pooler connection string** dùng port `5432` vào `DATABASE_URL`.
+
 Nhóm biến tối thiểu để chạy luồng chính:
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/product3d
+DATABASE_URL=postgresql://postgres.YOUR_PROJECT_REF:YOUR_DB_PASSWORD@aws-0-YOUR_REGION.pooler.supabase.com:5432/postgres
 REDIS_URL=redis://localhost:6379
 
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
@@ -54,24 +56,33 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
 NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
-Không đưa `SUPABASE_SECRET_KEY` hoặc `OPENAI_API_KEY` vào biến `NEXT_PUBLIC_*`.
+`DATABASE_URL` ở đây kết nối Prisma trực tiếp vào **Supabase Database**. Supabase Database là PostgreSQL được Supabase quản lý, vì vậy Prisma vẫn dùng provider `postgresql`.
 
-Xem thêm: [Dữ liệu, xác thực và Storage](05_DATA_AUTH_STORAGE.md).
+Không đưa `DATABASE_URL`, database password, `SUPABASE_SECRET_KEY` hoặc `OPENAI_API_KEY` vào biến `NEXT_PUBLIC_*`.
 
-## 4. Khởi động PostgreSQL + Redis local
+Xem chi tiết: [Supabase Database](../SUPABASE_DATABASE.md) và [Dữ liệu, xác thực và Storage](05_DATA_AUTH_STORAGE.md).
 
-Repo có `docker-compose.yml` cho hai dependency này:
+## 4. Khởi động Redis local
+
+Repo không còn yêu cầu PostgreSQL local. Database dùng Supabase.
 
 ```bash
 docker compose up -d
 ```
 
-Mặc định:
+Compose hiện chỉ chạy:
 
-- PostgreSQL: `localhost:5432`, database `product3d`.
 - Redis: `localhost:6379`, eviction policy `noeviction` để phù hợp BullMQ.
 
-Supabase Auth/Storage **không** được dựng bằng compose này; dùng Supabase project riêng.
+Kiến trúc local:
+
+```text
+Web / API / Workers local
+  ├── Supabase Database
+  ├── Supabase Auth
+  ├── Supabase Storage
+  └── Redis local
+```
 
 ## 5. Chuẩn bị Prisma và Storage
 
@@ -85,9 +96,11 @@ pnpm --filter @product3d/api prisma:seed
 Ý nghĩa:
 
 - `prisma:generate`: tạo Prisma Client.
-- `prisma:migrate`: áp dụng migration local/dev.
+- `prisma:migrate`: áp dụng migration vào Supabase Database qua `DATABASE_URL`.
 - `storage:setup`: tạo/xác minh private Supabase bucket.
 - `prisma:seed`: tạo dữ liệu seed cho material/style/variant/catalog/demo cần thiết.
+
+Sau migration, có thể mở Supabase Dashboard → **Table Editor** để kiểm tra các bảng đã được tạo.
 
 ## 6. Cài dependency Python
 
@@ -182,6 +195,7 @@ Nếu luồng này không chạy, đọc [Xử lý sự cố](10_TROUBLESHOOTING
 
 ## 10. Nên đọc tiếp
 
+- [Supabase Database](../SUPABASE_DATABASE.md)
 - [Repository và kiến trúc](02_REPOSITORY_AND_ARCHITECTURE.md)
 - [Web Editor](03_WEB_EDITOR.md)
 - [API Backend](04_API_BACKEND.md)
