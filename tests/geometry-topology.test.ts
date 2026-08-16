@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {analyzeTriangleTopology,classifyComponentization} from '@product3d/geometry-topology';
+import {analyzeTriangleTopology,classifyComponentization} from '../packages/geometry-topology/src/index';
 
 const cubePositions=[
   -1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1,
