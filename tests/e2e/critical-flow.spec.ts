@@ -55,9 +55,11 @@ test('Import → prepare → lock → customize → undo/redo → save version �
   });
 
   await page.goto('/');
+  await page.getByRole('button',{name:'Đăng ký'}).click();
+  await expect(page.getByText('Nhập email.')).toBeVisible();
   await page.getByLabel('Email').fill('e2e@example.com');
   await page.getByLabel('Password').fill('password123');
-  await page.getByRole('button',{name:'Sign in'}).click();
+  await page.getByRole('button',{name:'Đăng nhập'}).click();
   await expect(page.getByText('e2e@example.com')).toBeVisible();
 
   const glbInput=page.locator('input[type="file"][accept=".glb"]');
