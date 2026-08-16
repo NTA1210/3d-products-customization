@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test,type Page} from '@playwright/test';
 import path from 'node:path';
 
 const now=new Date().toISOString();
@@ -6,8 +6,8 @@ const authUser={id:'00000000-0000-4000-8000-000000000001',aud:'authenticated',ro
 const session={access_token:'e2e-access-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,refresh_token:'e2e-refresh-token',user:authUser};
 const analysis={version:1 as const,unitScaleToMm:1000,stats:{nodes:8,meshes:6,primitives:6,triangles:72,materials:1,textures:0},meshes:[],componentCandidates:[],warnings:[{code:'ROOT_SCALE_NON_IDENTITY',severity:'INFO' as const,message:'Root scale review note.',sourceId:'node_0000'},{code:'DUPLICATE_NAME',severity:'INFO' as const,message:'Duplicate display-name note.'}]};
 
-async function mockAuth(page:Parameters<typeof test>[0] extends never?never:any){
-  await page.route('http://127.0.0.1:54321/**',async (route:any)=>{
+async function mockAuth(page:Page){
+  await page.route('http://127.0.0.1:54321/**',async route=>{
     const url=new URL(route.request().url());
     if(url.pathname.startsWith('/auth/v1/token')){
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(session)});
@@ -21,7 +21,7 @@ async function mockAuth(page:Parameters<typeof test>[0] extends never?never:any)
   });
 }
 
-async function signIn(page:any){
+async function signIn(page:Page){
   await page.goto('/');
   await page.getByLabel('Email').fill('e2e@example.com');
   await page.getByLabel('Password').fill('password123');
