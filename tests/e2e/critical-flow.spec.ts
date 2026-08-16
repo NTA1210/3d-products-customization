@@ -6,8 +6,6 @@ const authUser={id:'00000000-0000-4000-8000-000000000001',aud:'authenticated',ro
 const session={access_token:'e2e-access-token',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,refresh_token:'e2e-refresh-token',user:authUser};
 const analysis={version:1 as const,unitScaleToMm:1000,stats:{nodes:8,meshes:6,primitives:6,triangles:72,materials:1,textures:0},meshes:[],componentCandidates:[],warnings:[]};
 
-async function json(route:Parameters<Parameters<typeof test>[1]>[0]['page']['route'] extends never?never:never){void route;}
-
 test('Import → prepare → lock → customize → undo/redo → save version → export GLB',async({page})=>{
   let versionPosts=0;
   let exportQueued=false;
