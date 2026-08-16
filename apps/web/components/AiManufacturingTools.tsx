@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {createLifestyleVisualization,createMultiViewRender,requestDesignSuggestions,runGeometryManufacturingCheck,runManufacturingCheck,type AiDesignResult,type ManufacturingIssue} from '../lib/ai-manufacturing-api';
 import {useEditorStore} from '../lib/store';
 
@@ -14,6 +14,15 @@ export default function AiManufacturingTools(){
   const[visualizationUrl,setVisualizationUrl]=useState<string>();
   const[busy,setBusy]=useState<Busy>();
   const ready=Boolean(store.projectId&&store.configuration?.placement.locked);
+
+  useEffect(()=>{
+    setInstructions('');
+    setAi(undefined);
+    setIssues([]);
+    setGeometry(undefined);
+    setVisualizationUrl(undefined);
+    setBusy(undefined);
+  },[store.assetId,store.projectId]);
 
   const fail=(error:unknown,fallback:string)=>useEditorStore.setState({error:error instanceof Error?error.message:fallback});
   const suggest=async()=>{

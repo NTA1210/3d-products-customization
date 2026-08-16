@@ -22,7 +22,18 @@ export default function CollectionWorkshopTools(){
   const error=(value:unknown,fallback:string)=>useEditorStore.setState({error:value instanceof Error?value.message:fallback});
 
   useEffect(()=>{void listWorkshops().then(rows=>{setWorkshops(rows);setWorkshopId(current=>current||rows[0]?.id||'');}).catch(value=>error(value,'Could not load workshops.'));},[]);
-  useEffect(()=>{if(!store.projectId)return;void listRfq(store.projectId).then(setRfqs).catch(()=>undefined);},[store.projectId]);
+  useEffect(()=>{
+    setCategory('CUSTOM');
+    setColorFamily('');
+    setStyleTags('');
+    setMaterialTags('');
+    setFeatureTags('');
+    setRecommendations([]);
+    setNote('');
+    setRfqs([]);
+    setBusy(undefined);
+  },[store.assetId,store.projectId]);
+  useEffect(()=>{if(!store.projectId)return;let cancelled=false;void listRfq(store.projectId).then(rows=>{if(!cancelled)setRfqs(rows);}).catch(()=>undefined);return()=>{cancelled=true;};},[store.projectId]);
 
   const recommend=async()=>{
     if(!store.projectId||!store.configuration)return;setBusy('collection');
