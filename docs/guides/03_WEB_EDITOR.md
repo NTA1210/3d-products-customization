@@ -1,8 +1,8 @@
 # 03 - Web Editor
 
-Guide này dành cho developer sửa giao diện, editor state và Three.js projection.
+Tài liệu này dành cho developer sửa giao diện, trạng thái editor và projection Three.js.
 
-## 1. Entry points cần đọc
+## 1. Các file bắt đầu nên đọc
 
 ```text
 apps/web/app/page.tsx
@@ -12,13 +12,13 @@ apps/web/components/ModelViewport.tsx
 apps/web/lib/store.ts
 ```
 
-Các component feature-level khác:
+Các component ở cấp tính năng khác:
 
-- `WorkspaceControls.tsx` — project/version/export/render/AR controls.
-- `StyleVariantTools.tsx` — style/preset/variant UI.
-- `AiManufacturingTools.tsx` — AI Suggest và manufacturability UI.
-- `CollectionWorkshopTools.tsx` — collection recommendation và RFQ/workshop UI.
-- `ModelViewerPreview.tsx` — `<model-viewer>`/AR preview layer.
+- `WorkspaceControls.tsx` — điều khiển project/version/export/render/AR.
+- `StyleVariantTools.tsx` — UI style/preset/variant.
+- `AiManufacturingTools.tsx` — UI AI Suggest và manufacturability.
+- `CollectionWorkshopTools.tsx` — UI collection recommendation và RFQ/workshop.
+- `ModelViewerPreview.tsx` — lớp preview `<model-viewer>`/AR.
 
 ## 2. Luồng UI chính
 
@@ -36,39 +36,39 @@ Auth
 
 `EditorShell.tsx` là orchestrator lớn nhất của editor UI. Khi cần tìm “button này gọi gì”, bắt đầu ở đây.
 
-## 3. State model
+## 3. Mô hình state
 
-Zustand store giữ **serializable editor state**, ví dụ:
+Zustand store giữ **editor state có thể serialize**, ví dụ:
 
-- asset URL/name/analysis.
+- URL/name/analysis của asset.
 - Manifest.
 - Configuration.
-- selected component.
-- editor phase.
+- component đang được chọn.
+- phase của editor.
 - placement mode / lock state.
 - history Undo/Redo.
-- variant signed URLs / catalog-derived runtime resources.
+- signed URL của variant / runtime resource lấy từ catalog.
 
 Không đưa `THREE.Object3D`, `Mesh`, `Material`, `Texture` vào business state.
 
-## 4. Three.js projection
+## 4. Projection Three.js
 
 `ModelViewport.tsx` chịu trách nhiệm:
 
-1. Load GLB với `useGLTF`.
+1. Load GLB bằng `useGLTF`.
 2. Clone scene/resource để editor sở hữu lifecycle.
 3. Map runtime mesh sang stable component ID.
-4. Build initial Manifest/Configuration candidate state.
+4. Tạo state candidate ban đầu cho Manifest/Configuration.
 5. Project Configuration vào scene:
-   - dimensions.
+   - dimension.
    - position / rotation.
    - material / color.
    - visibility / delete.
-   - variant replacement.
-6. Highlight selected component.
-7. Apply whole-product placement transform.
+   - thay variant.
+6. Highlight component đang chọn.
+7. Áp dụng transform vị trí cho toàn bộ sản phẩm.
 8. Dispose geometry/material/texture và clear cache khi unload.
-9. Gửi `viewer_load_time` telemetry sau khi model mount.
+9. Gửi telemetry `viewer_load_time` sau khi model được mount.
 
 ### Quy tắc quan trọng
 
@@ -80,14 +80,14 @@ Sai:
 mesh.scale.x = 2;
 ```
 
-Đúng về kiến trúc:
+Đúng theo kiến trúc:
 
 ```text
 UI event
 → EditorAction
 → store.dispatch / dispatchBatch
 → editor-core validation/apply
-→ Configuration đổi
+→ Configuration thay đổi
 → ModelViewport project state vào mesh
 ```
 
@@ -99,31 +99,31 @@ Các field có thể gồm:
 
 - semantic role.
 - editable.
-- editable axes.
+- editable axis.
 - scaling mode.
-- min/max constraints.
-- material categories.
+- constraint min/max.
+- material category.
 - variant group.
-- dependency definition.
+- định nghĩa dependency.
 
-User xác nhận xong thì Manifest được persist qua API. Không tự coi mesh name là semantic truth.
+Sau khi người dùng xác nhận, Manifest được lưu qua API. Không tự coi mesh name là semantic truth.
 
 ## 6. Place → Lock → Customize
 
 Trước Lock:
 
-- cho phép whole-model placement.
+- cho phép đặt vị trí toàn bộ model.
 - component customization phải bị chặn bởi constraint layer.
 
 Sau Lock:
 
-- component action mới được phép apply.
+- component action mới được phép áp dụng.
 
-Nếu UI vô tình enable input trước Lock thì backend/domain validation vẫn phải từ chối action; UI disable chỉ là UX, không phải validation duy nhất.
+Nếu UI vô tình bật input trước Lock thì backend/domain validation vẫn phải từ chối action; disable ở UI chỉ là UX, không phải lớp validation duy nhất.
 
 ## 7. Các loại editor action
 
-Action schema nằm trong `packages/action-engine` và được `packages/editor-core` apply.
+Action schema nằm trong `packages/action-engine` và được `packages/editor-core` áp dụng.
 
 Các nhóm hiện có bao gồm:
 
@@ -134,12 +134,12 @@ Các nhóm hiện có bao gồm:
 - color.
 - visibility.
 - delete / restore / reset.
-- variant replacement.
-- style/preset batch.
+- thay variant.
+- batch style/preset.
 
-AI Suggest cũng phải trả về các action cùng contract này.
+AI Suggest cũng phải trả về action theo cùng contract này.
 
-## 8. API access từ web
+## 8. Truy cập API từ web
 
 Các helper dưới `apps/web/lib/` chịu trách nhiệm gọi API và Supabase.
 
@@ -160,9 +160,9 @@ Checklist:
 3. Thêm validation ở constraint/compatibility nếu cần.
 4. Thêm apply logic trong editor-core.
 5. Thêm control trong UI.
-6. Dispatch action, không mutate scene.
-7. Project state mới trong `ModelViewport` nếu action tạo visual effect mới.
-8. Thêm Undo/Redo test.
+6. Dispatch action, không mutate scene trực tiếp.
+7. Project state mới trong `ModelViewport` nếu action tạo hiệu ứng hiển thị mới.
+8. Thêm test Undo/Redo.
 9. Nếu nằm trong critical flow, cập nhật Playwright E2E.
 
 ## 10. Debug frontend theo triệu chứng
@@ -171,22 +171,22 @@ Checklist:
 
 Kiểm tra:
 
-1. action có dispatch không.
+1. action có được dispatch không.
 2. `applyAction/applyActions` có trả `ok` không.
-3. Configuration trong store có đổi không.
+3. Configuration trong store có thay đổi không.
 4. effect trong `ModelViewport` có subscribe đúng dependency không.
 
 ### Model đổi nhưng save/reload mất state
 
-Khả năng lớn là thay đổi chỉ tồn tại ở scene, chưa nằm trong Configuration hoặc schema serialization.
+Khả năng lớn là thay đổi chỉ tồn tại trong scene, chưa nằm trong Configuration hoặc schema serialization.
 
 ### Chọn sai component
 
-Kiểm tra stable `__componentId`, glTF source association và manifest mapping; không fallback bằng mesh name nếu có source index.
+Kiểm tra stable `__componentId`, association theo source glTF và manifest mapping; không fallback bằng mesh name nếu đã có source index.
 
 ## 11. Tài liệu liên quan
 
-- [02 - Repository & Architecture](02_REPOSITORY_AND_ARCHITECTURE.md)
+- [02 - Repository và kiến trúc](02_REPOSITORY_AND_ARCHITECTURE.md)
 - [../ARCHITECTURE.md](../ARCHITECTURE.md)
 - [../VARIANTS_PRESETS.md](../VARIANTS_PRESETS.md)
-- [08 - Testing & CI](08_TESTING_AND_CI.md)
+- [08 - Kiểm thử và CI](08_TESTING_AND_CI.md)
