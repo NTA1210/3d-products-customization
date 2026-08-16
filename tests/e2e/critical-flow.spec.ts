@@ -67,7 +67,7 @@ test('Import → prepare → lock → customize → undo/redo → save version �
 
   await page.getByLabel('Editable').check();
   await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
-  await page.getByLabel('X').first().check();
+  await page.locator('label.check.inline').filter({hasText:/^X$/}).locator('input[type="checkbox"]').check();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
 
   await expect(page.getByRole('button',{name:'Lock placement'})).toBeVisible();
