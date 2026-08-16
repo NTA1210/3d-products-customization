@@ -13,6 +13,7 @@
     "@gltf-transform/extensions": "4.4.2",
     "@gltf-transform/functions": "4.4.2",
     "@prisma/client": "^5.22.0",
+    "@product3d/geometry-topology": "workspace:*",
     "@supabase/supabase-js": "2.111.0",
     "bullmq": "5.81.2",
     "draco3dgltf": "1.5.7",
