@@ -40,6 +40,7 @@ type EditorStore={
   setUploadedAsset:(a:string,u:string)=>void;
   setAssetAnalysis:(a:string,x:AssetAnalysis)=>void;
   setPreparedAsset:(m:ModelManifest,c:ModelConfiguration)=>void;
+  hydrateAsset:(p:{assetId:string;assetName:string;assetUrl:string;analysis?:AssetAnalysis;manifest?:ModelManifest})=>void;
   hydrateProject:(p:{projectId:string;assetId:string;assetName:string;assetUrl:string;manifest:ModelManifest;configuration:ModelConfiguration;analysis?:AssetAnalysis})=>void;
   setProjectId:(id?:string)=>void;
   replaceManifest:(m:ModelManifest)=>boolean;
@@ -76,7 +77,26 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     undoStack:[],redoStack:[],variants:{},error:undefined,
   }),
   setAssetAnalysis:(assetId,analysis)=>set({assetId,analysis}),
-  setPreparedAsset:(manifest,configuration)=>set(state=>state.manifest?{}:{manifest,configuration,selected:manifest.components[0]?.id}),
+  setPreparedAsset:(manifest,configuration)=>set(state=>{
+    if(state.configuration)return{};
+    if(state.manifest){
+      const missing=state.manifest.components.filter(component=>!configuration.components[component.id]);
+      if(missing.length){
+        return{
+          manifest,configuration,selected:manifest.components[0]?.id,
+          error:`Saved manifest could not map component IDs: ${missing.map(item=>item.id).join(', ')}. Loaded detected components instead.`,
+        };
+      }
+      return{configuration,selected:state.selected??state.manifest.components[0]?.id};
+    }
+    return{manifest,configuration,selected:manifest.components[0]?.id};
+  }),
+  hydrateAsset:payload=>set({
+    phase:'PREPARE',projectId:undefined,assetId:payload.assetId,assetName:payload.assetName,
+    assetUrl:payload.assetUrl,analysis:payload.analysis,manifest:payload.manifest,configuration:undefined,
+    selected:payload.manifest?.components[0]?.id,placementMode:'translate',componentMode:'translate',
+    undoStack:[],redoStack:[],variants:{},error:undefined,
+  }),
   hydrateProject:payload=>set({
     phase:'EDITOR',projectId:payload.projectId,assetId:payload.assetId,assetName:payload.assetName,
     assetUrl:payload.assetUrl,analysis:payload.analysis,manifest:payload.manifest,configuration:payload.configuration,
