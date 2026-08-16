@@ -164,18 +164,20 @@ export async function startAssetPipeline(
   );
 }
 
-export const listAssets = () =>
-  expectJson<AssetSummary[]>(authFetch(`${apiRoot()}/assets`));
+export async function listAssets() {
+  return expectJson<AssetSummary[]>(await authFetch(`${apiRoot()}/assets`));
+}
 
 export async function loadStoredAsset(assetId: string) {
+  const [assetResponse, downloadResponse, manifestResponse] = await Promise.all([
+    authFetch(`${apiRoot()}/assets/${assetId}`),
+    authFetch(`${apiRoot()}/assets/${assetId}/download?kind=source`),
+    authFetch(`${apiRoot()}/assets/${assetId}/manifest`),
+  ]);
   const [asset, download, manifestRecord] = await Promise.all([
-    expectJson<AssetDetail>(authFetch(`${apiRoot()}/assets/${assetId}`)),
-    expectJson<{ url: string }>(
-      authFetch(`${apiRoot()}/assets/${assetId}/download?kind=source`),
-    ),
-    expectJson<{ manifestJson: unknown } | null>(
-      authFetch(`${apiRoot()}/assets/${assetId}/manifest`),
-    ),
+    expectJson<AssetDetail>(assetResponse),
+    expectJson<{ url: string }>(downloadResponse),
+    expectJson<{ manifestJson: unknown } | null>(manifestResponse),
   ]);
   return {
     assetId: asset.id,
