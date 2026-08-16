@@ -255,7 +255,10 @@ export function prepareComponentTargets(doc:Document,manifest:ModelManifest){
       sourcePrimitive.dispose();
     }
 
-    if(isolated.listPrimitives().length===0)sourceNode.setMesh(null);
+    if(isolated.listPrimitives().length===0){
+      sourceNode.setMesh(null);
+      isolated.dispose();
+    }
   }
   return targets;
 }
