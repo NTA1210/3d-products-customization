@@ -96,6 +96,13 @@ async function main(){
 
   const exported=await nodeIo.writeBinary(document);
   const report=await validator.validateBytes(exported,{uri:'region-export-smoke.glb',format:'glb',maxIssues:5000});
+  if(report.issues.numErrors>0){
+    console.error(JSON.stringify({
+      event:'region_export_validation_failed',
+      errors:report.issues.numErrors,
+      messages:report.issues.messages.filter(message=>message.severity===0),
+    },null,2));
+  }
   assert.equal(report.issues.numErrors,0,'exported region GLB must pass glTF validation');
 
   const reimported=await nodeIo.readBinary(exported);
