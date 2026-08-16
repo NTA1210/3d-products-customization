@@ -1,6 +1,8 @@
 import {
+  AssetAnalysisSchema,
   ModelConfigurationSchema,
   ModelManifestSchema,
+  type AssetAnalysis,
   type ModelConfiguration,
   type ModelManifest,
 } from '@product3d/model-schema';
@@ -19,10 +21,16 @@ export const saveVersion=(projectId:string,name:string,configuration:ModelConfig
 
 export async function loadProject(projectId:string,versionId?:string){
   const project=await request<{id:string;name:string;activeVersionId?:string|null;modelAsset:{id:string;name:string};versions:ProjectVersion[]}>(`${root()}/projects/${projectId}`);
-  const manifestRecord=await request<{manifestJson:unknown}|null>(`${root()}/assets/${project.modelAsset.id}/manifest`);if(!manifestRecord)throw new Error('Project asset has no saved manifest.');
-  const download=await request<{url:string}>(`${root()}/assets/${project.modelAsset.id}/download?kind=source`);
+  const[manifestRecord,download,analysis]=await Promise.all([
+    request<{manifestJson:unknown}|null>(`${root()}/assets/${project.modelAsset.id}/manifest`),
+    request<{url:string}>(`${root()}/assets/${project.modelAsset.id}/download?kind=source`),
+    request<unknown>(`${root()}/assets/${project.modelAsset.id}/analysis`)
+      .then(value=>AssetAnalysisSchema.parse(value) as AssetAnalysis)
+      .catch(()=>undefined),
+  ]);
+  if(!manifestRecord)throw new Error('Project asset has no saved manifest.');
   const version=project.versions.find(item=>item.id===(versionId??project.activeVersionId))??project.versions[0];if(!version)throw new Error('Project has no saved version.');
-  return{projectId:project.id,assetId:project.modelAsset.id,assetName:project.modelAsset.name,assetUrl:download.url,manifest:ModelManifestSchema.parse(manifestRecord.manifestJson) as ModelManifest,configuration:ModelConfigurationSchema.parse(version.configurationJson),versions:project.versions,activeVersionId:version.id};
+  return{projectId:project.id,assetId:project.modelAsset.id,assetName:project.modelAsset.name,assetUrl:download.url,analysis,manifest:ModelManifestSchema.parse(manifestRecord.manifestJson) as ModelManifest,configuration:ModelConfigurationSchema.parse(version.configurationJson),versions:project.versions,activeVersionId:version.id};
 }
 
 export async function queueExport(projectId:string,configuration:ModelConfiguration,format:ExportFormat='GLB'){
