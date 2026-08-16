@@ -20,7 +20,7 @@ test('live Supabase/worker critical flow exports and re-imports customized GLB',
 
   await page.getByLabel('Editable').check();
   await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
-  await page.getByLabel('X').first().check();
+  await page.locator('label.check.inline').filter({hasText:/^X$/}).locator('input[type="checkbox"]').check();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
   await page.getByRole('button',{name:'Lock placement'}).click();
 
