@@ -1,5 +1,163 @@
-import {AssetAnalysisSchema,ModelManifestSchema,type AssetAnalysis,type ModelManifest} from '@product3d/model-schema';import {browserSupabase,authFetch} from './supabase-browser';
-export type AssetPipelineStatus='idle'|'requesting-upload'|'uploading'|'queued'|'processing'|'retrying'|'ready'|'failed';type ImportResponse={asset:{id:string};upload:{bucket:string;path:string;token:string;expiresInSeconds:number}};type JobResponse={id:string;status:string;failureReason?:string|null};const apiRoot=()=>`${(process.env.NEXT_PUBLIC_API_URL??'http://localhost:4000').replace(/\/$/,'')}/api`;async function expectJson<T>(response:Response):Promise<T>{if(!response.ok){const text=await response.text();throw new Error(text||`Request failed (${response.status})`)}return response.json() as Promise<T>}const sleep=(ms:number,signal?:AbortSignal)=>new Promise<void>((resolve,reject)=>{const timer=setTimeout(resolve,ms);signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))},{once:true})});
-export async function startAssetPipeline(file:File,onStatus:(s:AssetPipelineStatus)=>void,signal?:AbortSignal):Promise<{assetId:string;jobId:string;analysis:AssetAnalysis}>{onStatus('requesting-upload');const contentType=file.type||'model/gltf-binary';const imported=await expectJson<ImportResponse>(await authFetch(`${apiRoot()}/assets/import`,{method:'POST',headers:{'content-type':'application/json'},signal,body:JSON.stringify({name:file.name.replace(/\.glb$/i,''),originalFilename:file.name,contentType,sizeBytes:file.size})}));onStatus('uploading');const{error}=await browserSupabase().storage.from(imported.upload.bucket).uploadToSignedUrl(imported.upload.path,imported.upload.token,file,{contentType});if(error)throw new Error(`Supabase Storage upload failed: ${error.message}`);onStatus('queued');const queued=await expectJson<{jobId:string}>(await authFetch(`${apiRoot()}/assets/${imported.asset.id}/analyze`,{method:'POST',signal}));for(let i=0;i<180;i++){await sleep(1000,signal);const job=await expectJson<JobResponse>(await authFetch(`${apiRoot()}/jobs/${queued.jobId}`,{signal})),state=job.status.toLowerCase();if(state==='completed'){const raw=await expectJson<unknown>(await authFetch(`${apiRoot()}/assets/${imported.asset.id}/analysis`,{signal})),analysis=AssetAnalysisSchema.parse(raw);onStatus('ready');return{assetId:imported.asset.id,jobId:queued.jobId,analysis}}if(state==='failed'){onStatus('failed');throw new Error(job.failureReason||'Asset processing failed.')}onStatus(state==='retrying'?'retrying':state==='processing'?'processing':'queued')}onStatus('failed');throw new Error('Asset processing timed out.')}
-export async function saveAssetManifest(assetId:string,manifest:ModelManifest){return expectJson(await authFetch(`${apiRoot()}/assets/${assetId}/manifest`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({manifestJson:manifest})}))}
-export async function loadAssetManifest(assetId:string):Promise<ModelManifest>{const record=await expectJson<{manifestJson:unknown}|null>(await authFetch(`${apiRoot()}/assets/${assetId}/manifest`));if(!record)throw new Error('No saved manifest exists for this asset.');return ModelManifestSchema.parse(record.manifestJson)}
+import {
+  AssetAnalysisSchema,
+  ModelManifestSchema,
+  type AssetAnalysis,
+  type ModelManifest,
+} from '@product3d/model-schema';
+import { browserSupabase, authFetch } from './supabase-browser';
+
+export type AssetPipelineStatus =
+  | 'idle'
+  | 'requesting-upload'
+  | 'uploading'
+  | 'queued'
+  | 'processing'
+  | 'retrying'
+  | 'ready'
+  | 'failed';
+
+type ImportResponse = {
+  asset: { id: string };
+  upload: { bucket: string; path: string; token: string; expiresInSeconds: number };
+};
+
+type JobResponse = {
+  id: string;
+  status: string;
+  failureReason?: string | null;
+};
+
+const apiRoot = () =>
+  `${(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')}/api`;
+
+function backendFailureMessage(response: Response, text: string) {
+  const normalized = text.toLowerCase();
+  const likelyInfrastructureFailure =
+    response.status >= 500 ||
+    normalized.includes('supabase') ||
+    normalized.includes('database') ||
+    normalized.includes('connection') ||
+    normalized.includes('inactive');
+
+  if (!likelyInfrastructureFailure) {
+    return text || `Request failed (${response.status})`;
+  }
+
+  const detail = text ? ` Chi tiết: ${text}` : '';
+  return [
+    `Asset backend chưa sẵn sàng (HTTP ${response.status}).`,
+    'Kiểm tra API, Supabase project phải ở trạng thái ACTIVE, Redis và asset-processing worker.',
+    'Sau khi backend hoạt động, import lại GLB để tạo Asset ID trước khi Save Manifest.',
+  ].join(' ') + detail;
+}
+
+async function expectJson<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(backendFailureMessage(response, text));
+  }
+  return response.json() as Promise<T>;
+}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
+
+export async function startAssetPipeline(
+  file: File,
+  onStatus: (s: AssetPipelineStatus) => void,
+  signal?: AbortSignal,
+): Promise<{ assetId: string; jobId: string; analysis: AssetAnalysis }> {
+  onStatus('requesting-upload');
+  const contentType = file.type || 'model/gltf-binary';
+  const imported = await expectJson<ImportResponse>(
+    await authFetch(`${apiRoot()}/assets/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      signal,
+      body: JSON.stringify({
+        name: file.name.replace(/\.glb$/i, ''),
+        originalFilename: file.name,
+        contentType,
+        sizeBytes: file.size,
+      }),
+    }),
+  );
+
+  onStatus('uploading');
+  const { error } = await browserSupabase()
+    .storage.from(imported.upload.bucket)
+    .uploadToSignedUrl(imported.upload.path, imported.upload.token, file, { contentType });
+  if (error) {
+    throw new Error(
+      `Supabase Storage upload failed: ${error.message}. Kiểm tra project Supabase đang ACTIVE và bucket Storage khả dụng.`,
+    );
+  }
+
+  onStatus('queued');
+  const queued = await expectJson<{ jobId: string }>(
+    await authFetch(`${apiRoot()}/assets/${imported.asset.id}/analyze`, {
+      method: 'POST',
+      signal,
+    }),
+  );
+
+  for (let i = 0; i < 180; i += 1) {
+    await sleep(1000, signal);
+    const job = await expectJson<JobResponse>(
+      await authFetch(`${apiRoot()}/jobs/${queued.jobId}`, { signal }),
+    );
+    const state = job.status.toLowerCase();
+
+    if (state === 'completed') {
+      const raw = await expectJson<unknown>(
+        await authFetch(`${apiRoot()}/assets/${imported.asset.id}/analysis`, { signal }),
+      );
+      const analysis = AssetAnalysisSchema.parse(raw);
+      onStatus('ready');
+      return { assetId: imported.asset.id, jobId: queued.jobId, analysis };
+    }
+
+    if (state === 'failed') {
+      onStatus('failed');
+      throw new Error(
+        job.failureReason ||
+          'Asset processing failed. Kiểm tra Redis và asset-processing worker rồi import lại GLB.',
+      );
+    }
+
+    onStatus(state === 'retrying' ? 'retrying' : state === 'processing' ? 'processing' : 'queued');
+  }
+
+  onStatus('failed');
+  throw new Error(
+    'Asset processing timed out. Kiểm tra Redis và asset-processing worker rồi import lại GLB.',
+  );
+}
+
+export async function saveAssetManifest(assetId: string, manifest: ModelManifest) {
+  return expectJson(
+    await authFetch(`${apiRoot()}/assets/${assetId}/manifest`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ manifestJson: manifest }),
+    }),
+  );
+}
+
+export async function loadAssetManifest(assetId: string): Promise<ModelManifest> {
+  const record = await expectJson<{ manifestJson: unknown } | null>(
+    await authFetch(`${apiRoot()}/assets/${assetId}/manifest`),
+  );
+  if (!record) throw new Error('No saved manifest exists for this asset.');
+  return ModelManifestSchema.parse(record.manifestJson);
+}
