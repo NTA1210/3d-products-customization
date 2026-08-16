@@ -2,7 +2,15 @@
 
 import {Suspense,useEffect,useMemo,useRef} from 'react';
 import {Canvas} from '@react-three/fiber';
-import {Grid,OrbitControls,TransformControls,useGLTF} from '@react-three/drei';
+import {
+  Bounds,
+  GizmoHelper,
+  GizmoViewport,
+  Grid,
+  OrbitControls,
+  TransformControls,
+  useGLTF,
+} from '@react-three/drei';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type {ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
@@ -14,6 +22,7 @@ const EMPTY_TRANSFORM:TransformState={position:[0,0,0],rotation:[0,0,0],scale:[1
 type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
 type GltfAssociation={nodes?:number;meshes?:number;primitives?:number};
 const variantCache=new Map<string,Promise<THREE.Object3D>>();
+const pendingDisposals=new WeakMap<THREE.Object3D,symbol>();
 
 function pad(value:number,size=4){return String(value).padStart(size,'0');}
 function stablePath(object:THREE.Object3D){const names:string[]=[];let current:THREE.Object3D|null=object;while(current){const index=current.parent?current.parent.children.indexOf(current):0;names.push(`${current.name||current.type}[${index}]`);current=current.parent;}return names.reverse().join('/');}
@@ -37,7 +46,16 @@ function disposeObject3D(root:THREE.Object3D){
   root.traverse(object=>{if(!(object instanceof THREE.Mesh))return;geometries.add(object.geometry);for(const material of Array.isArray(object.material)?object.material:[object.material]){materials.add(material);for(const value of Object.values(material))if(value instanceof THREE.Texture)textures.add(value);}});
   for(const texture of textures)texture.dispose();for(const material of materials)material.dispose();for(const geometry of geometries)geometry.dispose();
 }
-function clearVariantCache(){for(const promise of variantCache.values())void promise.then(disposeObject3D).catch(()=>undefined);variantCache.clear();}
+function retainOwnedObject3D(root:THREE.Object3D){pendingDisposals.delete(root);}
+function releaseOwnedObject3D(root:THREE.Object3D){
+  const ticket=Symbol('dispose');
+  pendingDisposals.set(root,ticket);
+  queueMicrotask(()=>{
+    if(pendingDisposals.get(root)!==ticket)return;
+    pendingDisposals.delete(root);
+    disposeObject3D(root);
+  });
+}
 
 function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssociation>,modelId:string){
   const byPath=new Map<string,GltfAssociation>();scene.traverse(object=>byPath.set(stablePath(object),associationFor(object,associations)));
@@ -57,8 +75,10 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
 
   useEffect(()=>setPreparedAsset(prepared.manifest,prepared.configuration),[prepared,setPreparedAsset]);
   useEffect(()=>{if(loadReported.current||loadStartedAt<=0)return;loadReported.current=true;void reportViewerLoad(performance.now()-loadStartedAt);},[loadStartedAt]);
-  useEffect(()=>()=>disposeObject3D(prepared.scene),[prepared.scene]);
-  useEffect(()=>()=>{disposeObject3D(gltf.scene);useGLTF.clear(url);clearVariantCache();},[gltf.scene,url]);
+  useEffect(()=>{
+    retainOwnedObject3D(prepared.scene);
+    return()=>releaseOwnedObject3D(prepared.scene);
+  },[prepared.scene]);
 
   useEffect(()=>{if(!configuration||!manifest)return;prepared.scene.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;if(!id)return;const state=configuration.components[id];if(!state)return;const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);object.visible=state.visible&&!state.deleted&&!state.variantId;const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];for(const[index,material]of materials.entries()){if(!(material instanceof THREE.MeshStandardMaterial))continue;const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);}});},[configuration,manifest,prepared.scene]);
 
@@ -71,4 +91,53 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   return model;
 }
 
-export default function ModelViewport(){const assetUrl=useEditorStore(state=>state.assetUrl);const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[3.8,2.8,4.8],fov:42}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><Grid args={[20,20]} infiniteGrid fadeDistance={25}/><OrbitControls makeDefault/>{assetUrl?<Suspense fallback={null}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Suspense>:null}</Canvas>;}
+function NavigationAids(){
+  return <>
+    <Grid
+      infiniteGrid
+      args={[10,10]}
+      cellSize={1}
+      sectionSize={10}
+      fadeDistance={100000}
+      fadeStrength={1}
+      side={THREE.DoubleSide}
+      depthWrite={false}
+    />
+    <axesHelper args={[10]}/>
+    <GizmoHelper alignment="bottom-right" margin={[80,80]}>
+      <GizmoViewport
+        axisColors={['#e55757','#58b86b','#4b83e6']}
+        labelColor="white"
+      />
+    </GizmoHelper>
+  </>;
+}
+
+export default function ModelViewport(){
+  const assetUrl=useEditorStore(state=>state.assetUrl);
+  const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);
+  return <Canvas
+    dpr={[1,2]}
+    gl={{powerPreference:'high-performance'}}
+    camera={{position:[4,3,5],fov:45,near:.01,far:100000}}
+    shadows
+    onPointerMissed={()=>useEditorStore.getState().select(undefined)}
+  >
+    <ambientLight intensity={1.25}/>
+    <directionalLight position={[4,7,5]} intensity={2.2} castShadow/>
+    <NavigationAids/>
+    <OrbitControls
+      makeDefault
+      enableDamping
+      dampingFactor={.08}
+      screenSpacePanning
+      minDistance={.02}
+      maxDistance={100000}
+    />
+    {assetUrl?<Suspense fallback={null}>
+      <Bounds key={assetUrl} fit clip observe margin={1.2}>
+        <LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/>
+      </Bounds>
+    </Suspense>:null}
+  </Canvas>;
+}
