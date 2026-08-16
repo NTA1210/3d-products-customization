@@ -19,15 +19,15 @@ test('live Supabase/worker critical flow exports and re-imports customized GLB',
   await expect(page.getByText('Asset: ready')).toBeVisible({timeout:180_000});
 
   await page.getByLabel('Editable').check();
-  await page.getByLabel('Scaling').selectOption('AXIS_SCALE');
+  await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
   await page.getByLabel('X').first().check();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
   await page.getByRole('button',{name:'Lock placement'}).click();
 
-  const width=page.getByLabel('WIDTH (mm)');
+  const width=page.locator('label:has-text("WIDTH (mm)") + input');
   const initial=Number(await width.inputValue());
   await width.fill(String(Math.max(1,Math.round(initial*0.95))));
-  await page.getByLabel('Material').selectOption('mat_oak_light');
+  await page.locator('label:has-text("Material") + select').selectOption('mat_oak_light');
   await page.getByRole('button',{name:'Undo'}).click();
   await page.getByRole('button',{name:'Redo'}).click();
 
