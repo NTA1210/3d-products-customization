@@ -1,3 +1,3 @@
-# AI + Manufacturability scope
+# Phạm vi AI và khả năng sản xuất
 
-This slice implements strict structured AI suggestions and authoritative manufacturing checks. AI output is advisory until the user explicitly applies its `EditorAction[]`; manufacturing rule results remain authoritative even when an LLM explanation is available.
+Phần này triển khai các đề xuất AI có cấu trúc chặt chẽ và các kiểm tra khả năng sản xuất có tính quyết định. Kết quả AI chỉ mang tính tư vấn cho đến khi người dùng chủ động áp dụng `EditorAction[]`; kết quả từ các quy tắc sản xuất vẫn là nguồn kết luận chính thức ngay cả khi có thêm phần giải thích do LLM tạo ra.
