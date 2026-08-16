@@ -1,20 +1,20 @@
-# Authentication, ownership and project versions
+# Xác thực, quyền sở hữu và phiên bản dự án
 
-The web app uses Supabase Auth sessions. API calls carry `Authorization: Bearer <access-token>` and NestJS verifies each token using Supabase Auth before trusting the user identity.
+Ứng dụng web sử dụng session của Supabase Auth. Các request đến API mang header `Authorization: Bearer <access-token>` và NestJS xác minh từng token thông qua Supabase Auth trước khi tin cậy danh tính người dùng.
 
-Protected resources enforce ownership in the application database:
-- newly imported `ModelAsset.ownerId` must match the authenticated Supabase user;
-- `Project.userId` is always taken from the verified request, never from client JSON;
-- asset analysis/manifest/download endpoints query by both asset ID and owner ID;
-- job status/artifact endpoints authorize through the related asset owner;
-- user presets are scoped to the verified user.
+Các tài nguyên được bảo vệ đều kiểm tra quyền sở hữu trong cơ sở dữ liệu ứng dụng:
+- `ModelAsset.ownerId` của asset mới import phải khớp với người dùng Supabase đã xác thực;
+- `Project.userId` luôn lấy từ request đã được xác minh, không bao giờ lấy trực tiếp từ JSON phía client;
+- các endpoint phân tích asset, manifest và download truy vấn đồng thời theo asset ID và owner ID;
+- các endpoint trạng thái job và artifact kiểm tra quyền thông qua chủ sở hữu của asset liên quan;
+- preset của người dùng chỉ nằm trong phạm vi của người dùng đã được xác minh.
 
-Legacy assets created before this migration may have `ownerId = null`; they are not considered owned by an authenticated user automatically.
+Các asset cũ được tạo trước migration này có thể có `ownerId = null`; hệ thống không tự động xem chúng là tài sản của bất kỳ người dùng đã xác thực nào.
 
-The web workspace supports:
-1. sign in/sign up;
-2. import and prepare a GLB;
-3. create a project and initial version;
-4. save further configuration versions;
-5. load a project or selected version with a fresh signed source-GLB URL;
-6. export the current configuration as a validated GLB artifact.
+Workspace trên web hỗ trợ:
+1. đăng nhập/đăng ký;
+2. import và chuẩn bị GLB;
+3. tạo project và phiên bản ban đầu;
+4. lưu thêm các phiên bản cấu hình;
+5. tải project hoặc phiên bản đã chọn bằng URL GLB nguồn được ký mới;
+6. export cấu hình hiện tại thành artifact GLB đã được kiểm tra hợp lệ.
