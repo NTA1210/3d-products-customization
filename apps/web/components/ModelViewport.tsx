@@ -282,9 +282,10 @@ function SelectionIndicator({
   const box = useMemo(() => new THREE.Box3(), []);
   const helper = useMemo(() => {
     const next = new THREE.Box3Helper(box, '#4cc9ff');
-    next.material.depthTest = false;
-    next.material.transparent = true;
-    next.material.opacity = 0.95;
+    const material = next.material as THREE.LineBasicMaterial;
+    material.depthTest = false;
+    material.transparent = true;
+    material.opacity = 0.95;
     next.renderOrder = 1000;
     return next;
   }, [box]);
@@ -295,7 +296,7 @@ function SelectionIndicator({
   useEffect(
     () => () => {
       helper.geometry.dispose();
-      helper.material.dispose();
+      (helper.material as THREE.LineBasicMaterial).dispose();
     },
     [helper],
   );
