@@ -26,6 +26,10 @@ jobs:
       - run: pnpm test
       - name: Exercise region export and re-import
         run: pnpm --filter @product3d/export-worker exec tsx ../../tests/export_region_smoke.ts
+      - name: Exercise shared-mesh and multi-primitive export
+        run: pnpm --filter @product3d/export-worker exec tsx ../../tests/export_structure_smoke.ts
+      - name: Exercise sparse accessor decode and topology
+        run: pnpm --filter @product3d/asset-processing-worker exec tsx ../../tests/gltf_sparse_smoke.ts
       - name: Build
         id: build
         continue-on-error: true
