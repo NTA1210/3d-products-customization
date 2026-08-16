@@ -40,7 +40,7 @@ type EditorStore={
   setUploadedAsset:(a:string,u:string)=>void;
   setAssetAnalysis:(a:string,x:AssetAnalysis)=>void;
   setPreparedAsset:(m:ModelManifest,c:ModelConfiguration)=>void;
-  hydrateProject:(p:{projectId:string;assetId:string;assetName:string;assetUrl:string;manifest:ModelManifest;configuration:ModelConfiguration})=>void;
+  hydrateProject:(p:{projectId:string;assetId:string;assetName:string;assetUrl:string;manifest:ModelManifest;configuration:ModelConfiguration;analysis?:AssetAnalysis})=>void;
   setProjectId:(id?:string)=>void;
   replaceManifest:(m:ModelManifest)=>boolean;
   setDependencies:(d:DependencyRule[])=>void;
@@ -79,9 +79,9 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
   setPreparedAsset:(manifest,configuration)=>set(state=>state.manifest?{}:{manifest,configuration,selected:manifest.components[0]?.id}),
   hydrateProject:payload=>set({
     phase:'EDITOR',projectId:payload.projectId,assetId:payload.assetId,assetName:payload.assetName,
-    assetUrl:payload.assetUrl,manifest:payload.manifest,configuration:payload.configuration,
+    assetUrl:payload.assetUrl,analysis:payload.analysis,manifest:payload.manifest,configuration:payload.configuration,
     selected:payload.manifest.components[0]?.id,placementMode:'translate',componentMode:'translate',
-    undoStack:[],redoStack:[],error:undefined,
+    undoStack:[],redoStack:[],variants:{},error:undefined,
   }),
   setProjectId:projectId=>set({projectId}),
   replaceManifest:manifest=>{
