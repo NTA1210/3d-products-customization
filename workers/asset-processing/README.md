@@ -1,18 +1,23 @@
 # Asset processing worker
 
-Real P0 GLB validation/normalization worker.
+Worker P0 dùng để kiểm tra, phân tích và normalize GLB.
 
 Pipeline:
-1. Consume `asset-processing` BullMQ jobs from Redis.
-2. Download the source GLB from S3-compatible storage.
-3. Validate against glTF 2.0 with the Khronos `gltf-validator` package.
-4. Parse with glTF Transform, register standard extensions + Draco dependencies, then run lossless `prune()` and `dedup()` transforms.
-5. Re-serialize to GLB and validate the normalized bytes again.
-6. Upload `assets/{assetId}/normalized/model.glb`.
-7. Persist asset/job status, validation report, and before/after scene statistics in PostgreSQL.
+1. Nhận job `asset-processing` từ BullMQ/Redis.
+2. Tải source GLB từ private Supabase Storage.
+3. Validate glTF 2.0 bằng package Khronos `gltf-validator`.
+4. Parse bằng glTF Transform, đăng ký standard extension + Draco/Meshopt dependency, sau đó chạy `prune()` và `dedup()`.
+5. Serialize lại thành GLB và validate normalized bytes lần nữa.
+6. Upload `assets/{assetId}/normalized/model.glb` lên Supabase Storage.
+7. Lưu asset/job status, validation report và scene statistics vào Supabase Database thông qua Prisma.
 
-Run locally after infrastructure and migrations are ready:
+Chạy local sau khi `DATABASE_URL`, Supabase Storage và Redis đã được cấu hình:
 
 ```bash
 pnpm --filter @product3d/asset-processing-worker dev
 ```
+
+Xem thêm:
+- `docs/SUPABASE_DATABASE.md`
+- `docs/SUPABASE_STORAGE.md`
+- `docs/guides/06_WORKERS_AND_PIPELINES.md`
