@@ -63,10 +63,15 @@ function AssetPreparation() {
   const component = manifest.components.find((item) => item.id === selected);
   if (!component) return <p className="muted">Select a component candidate.</p>;
 
-  const candidate = analysis?.componentCandidates.find((item) => item.id === component.id);
   const componentState = configuration?.components[component.id];
-  const showRegionMapping =
-    analysis?.stats.meshes === 1 && Boolean(candidate && candidate.regionIds.length > 1);
+  const regionComponents = manifest.components.filter((item) => item.sourceRegionIds?.length);
+  const isRegionComponent = Boolean(component.sourceRegionIds?.length);
+  const tooManyRegions = analysis?.warnings.find(
+    (warning) => warning.code === 'TOO_MANY_GEOMETRY_REGIONS',
+  );
+  const continuousMesh = analysis?.warnings.find(
+    (warning) => warning.code === 'SINGLE_CONTINUOUS_MESH',
+  );
 
   const setAxis = (axis: 'x' | 'y' | 'z', checked: boolean) => {
     patchComponentDefinition(component.id, {
@@ -120,9 +125,26 @@ function AssetPreparation() {
     <>
       <div className="eyebrow">Asset Preparation</div>
       <p className="hint">
-        UNKNOWN / fixed is the safe default. Mark only the components you want to customize as
-        Editable, then choose their allowed axes and constraints.
+        UNKNOWN / fixed là mặc định an toàn. Chỉ đánh dấu Editable cho những part thực sự được
+        phép tùy chỉnh, sau đó chọn trục và constraint tương ứng.
       </p>
+
+      {regionComponents.length > 1 && (
+        <div className="warning">
+          Single-mesh asset đã được tách thành {regionComponents.length} geometry region candidate(s).
+          Mỗi region là một vùng hình học độc lập để bạn xác nhận, không phải semantic role tự động.
+          Hãy đổi Name/Role trước khi cho phép chỉnh sửa.
+        </div>
+      )}
+      {isRegionComponent && (
+        <p className="hint">
+          Geometry source: {component.sourceRegionIds?.join(', ')}. Region này có thể được chỉnh
+          độc lập sau khi bạn bật Editable.
+        </p>
+      )}
+      {tooManyRegions && <div className="warning">{tooManyRegions.message}</div>}
+      {continuousMesh && <div className="warning">{continuousMesh.message}</div>}
+
       <label>Name</label>
       <input
         value={component.name}
@@ -239,20 +261,6 @@ function AssetPreparation() {
         ))}
       </div>
 
-      {showRegionMapping && candidate && (
-        <div className="warning">
-          Single-mesh asset: {candidate.regionIds.length} disconnected geometry region(s) are
-          available as preparation candidates.{' '}
-          <button
-            onClick={() =>
-              patchComponentDefinition(component.id, { sourceRegionIds: candidate.regionIds })
-            }
-          >
-            Map all
-          </button>
-        </div>
-      )}
-
       <label>Dependencies JSON</label>
       <textarea
         rows={5}
@@ -329,6 +337,11 @@ function Inspector() {
       `Set ${axis.toLowerCase()}`,
     );
 
+  const canResize =
+    definition.editable &&
+    definition.scalingMode === 'AXIS_SCALE' &&
+    Object.values(definition.editableAxes).some(Boolean);
+
   return (
     <>
       <StyleVariantTools />
@@ -342,6 +355,39 @@ function Inspector() {
       </div>
       <h3>{definition.name}</h3>
 
+      <div className="eyebrow">Direct edit on model</div>
+      <div className="segmented">
+        <button
+          disabled={!definition.editable}
+          className={store.componentMode === 'translate' ? 'active' : ''}
+          onClick={() => store.setComponentMode('translate')}
+        >
+          Move
+        </button>
+        <button
+          disabled={!definition.editable}
+          className={store.componentMode === 'rotate' ? 'active' : ''}
+          onClick={() => store.setComponentMode('rotate')}
+        >
+          Rotate
+        </button>
+        <button
+          disabled={!canResize}
+          className={store.componentMode === 'scale' ? 'active' : ''}
+          onClick={() => store.setComponentMode('scale')}
+        >
+          Resize
+        </button>
+      </div>
+      {!definition.editable && (
+        <p className="hint">Part này đang Fixed. Bật Editable trong Asset Preparation để chỉnh.</p>
+      )}
+      {definition.editable && !canResize && (
+        <p className="hint">
+          Resize cần Scaling = AXIS_SCALE và ít nhất một trục X/Y/Z được cho phép.
+        </p>
+      )}
+
       {(['WIDTH', 'HEIGHT', 'DEPTH'] as const).map((axis) => {
         const key = axis.toLowerCase() as 'width' | 'height' | 'depth';
         const mapped = store.manifest!.axisMapping[key];
@@ -349,15 +395,35 @@ function Inspector() {
           definition.editable &&
           definition.editableAxes[mapped] &&
           definition.scalingMode === 'AXIS_SCALE';
+        const value = fromMm(state.dimensionsMm[key], unit);
+        const originalMm = Math.max(state.originalDimensionsMm[key], 0.001);
+        const configured = definition.constraints[key];
+        const minMm = Math.min(
+          state.dimensionsMm[key],
+          configured?.min ?? Math.max(originalMm * 0.25, 0.001),
+        );
+        const maxMm = Math.max(state.dimensionsMm[key], configured?.max ?? originalMm * 2);
+        const step = unit === 'mm' ? 1 : unit === 'cm' ? 0.1 : 0.01;
         return (
-          <div key={axis}>
+          <div key={axis} className="field-group">
             <label>
               {axis} ({unit})
             </label>
             <input
+              type="range"
+              aria-label={`${axis} slider`}
+              disabled={!enabled}
+              min={fromMm(minMm, unit)}
+              max={fromMm(maxMm, unit)}
+              step={step}
+              value={value}
+              onChange={(event) => dimension(axis, Number(event.target.value))}
+            />
+            <input
               type="number"
               disabled={!enabled}
-              value={Math.round(fromMm(state.dimensionsMm[key], unit) * 1000) / 1000}
+              step={step}
+              value={Math.round(value * 1000) / 1000}
               onChange={(event) => dimension(axis, Number(event.target.value))}
             />
           </div>
@@ -646,6 +712,7 @@ export default function EditorShell() {
               <span>{component.name}</span>
               <small>
                 {component.role} · {component.editable ? 'editable' : 'fixed'}
+                {component.sourceRegionIds?.length ? ' · geometry region' : ''}
                 {store.configuration?.components[component.id]?.deleted ? ' · deleted' : ''}
               </small>
             </button>
@@ -666,6 +733,7 @@ export default function EditorShell() {
           {selected && (
             <p className="source-id">
               {selected.sourceNodeIds[0]} / {selected.sourceMeshIds[0]}
+              {selected.sourceRegionIds?.[0] ? ` / ${selected.sourceRegionIds[0]}` : ''}
             </p>
           )}
         </aside>
