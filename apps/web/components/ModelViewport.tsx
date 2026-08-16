@@ -101,7 +101,6 @@ function NavigationAids(){
       fadeDistance={100000}
       fadeStrength={1}
       side={THREE.DoubleSide}
-      depthWrite={false}
     />
     <axesHelper args={[10]}/>
     <GizmoHelper alignment="bottom-right" margin={[80,80]}>
