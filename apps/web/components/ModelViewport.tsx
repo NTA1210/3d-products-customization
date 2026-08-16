@@ -1,7 +1,7 @@
 'use client';
 
 import {Suspense,useEffect,useMemo,useRef} from 'react';
-import {Canvas,useFrame} from '@react-three/fiber';
+import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import {Bounds,GizmoHelper,GizmoViewport,Grid,Html,OrbitControls,TransformControls,useGLTF} from '@react-three/drei';
 import {analyzeTriangleTopology,type TriangleRegion} from '@product3d/geometry-topology';
 import type {EditorAction} from '@product3d/action-engine';
@@ -14,10 +14,12 @@ import {reportViewerLoad} from '../lib/metrics';
 
 const EMPTY_TRANSFORM:TransformState={position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};
 const MAX_REGION_COMPONENTS=32;
+const MAX_MODEL_COMPONENTS=96;
 type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
 type GltfAssociation={nodes?:number;meshes?:number;primitives?:number};
 type PreparedPart={mesh:THREE.Mesh;id:string;nodeId:string;meshId:string;name:string;sourceRegionIds?:string[]};
 type DragSnapshot={position:THREE.Vector3;rotation:THREE.Euler;scale:THREE.Vector3;state:ModelConfiguration['components'][string]};
+type OrbitControlsLike={target:THREE.Vector3;update:()=>void};
 const variantCache=new Map<string,Promise<THREE.Object3D>>();
 const pendingDisposals=new WeakMap<THREE.Object3D,symbol>();
 
@@ -43,12 +45,40 @@ function initializePart(part:PreparedPart){part.mesh.userData.__componentId=part
 
 function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssociation>,modelId:string){
   const byPath=new Map<string,GltfAssociation>();scene.traverse(object=>byPath.set(stablePath(object),associationFor(object,associations)));
-  const clone=cloneOwnedScene(scene);const sourceMeshes=new Set<number>();for(const association of byPath.values())if(association.meshes!==undefined)sourceMeshes.add(association.meshes);
+  const clone=cloneOwnedScene(scene);
   const meshObjects:THREE.Mesh[]=[];clone.traverse(object=>{if(object instanceof THREE.Mesh)meshObjects.push(object);});
   const plans=meshObjects.map(mesh=>{const path=stablePath(mesh),association=byPath.get(path)??{},key=identity(association,path),topology=dynamicMesh(mesh)?undefined:topologyForGeometry(mesh.geometry);return{mesh,association,key,topology};});
-  const totalParts=plans.reduce((sum,plan)=>sum+Math.max(plan.topology?.regions.length??1,1),0);const hasDisconnected=plans.some(plan=>(plan.topology?.regions.length??0)>1);const canRegionize=sourceMeshes.size===1&&hasDisconnected&&totalParts<=MAX_REGION_COMPONENTS&&!plans.some(plan=>dynamicMesh(plan.mesh));
+  const predictedParts=plans.reduce((sum,plan)=>{const regionCount=plan.topology?.regions.length??1;return sum+(regionCount>1&&regionCount<=MAX_REGION_COMPONENTS?regionCount:1);},0);
+  const allowRegionSplit=predictedParts<=MAX_MODEL_COMPONENTS;
   const parts:PreparedPart[]=[];let count=0;
-  for(const plan of plans){const{mesh,association,key,topology}=plan;const regions=canRegionize?topology?.regions??[]:[];if(regions.length>1&&mesh.parent){const parent=mesh.parent;const group=new THREE.Group();group.name=`${mesh.name||'Component'} Regions`;group.position.copy(mesh.position);group.quaternion.copy(mesh.quaternion);group.scale.copy(mesh.scale);group.visible=mesh.visible;parent.add(group);for(const child of [...mesh.children])group.add(child);for(const region of regions){count+=1;const extracted=regionGeometry(mesh.geometry,region);const materials=Array.isArray(mesh.material)?mesh.material.map(material=>material.clone()):mesh.material.clone();const regionMesh=new THREE.Mesh(extracted.geometry,materials);regionMesh.name=`${mesh.name||`Mesh ${count}`} · Region ${region.islandIndex+1}`;regionMesh.position.copy(extracted.center);group.add(regionMesh);const id=`${key.id}_region_${pad(region.islandIndex,3)}`;parts.push({mesh:regionMesh,id,nodeId:key.nodeId,meshId:key.meshId,name:regionMesh.name,sourceRegionIds:[`${key.meshId}_prim_${pad(association.primitives??0,2)}_island_${pad(region.islandIndex,3)}`]});}parent.remove(mesh);disposeDetachedMesh(mesh);}else{count+=1;parts.push({mesh,id:key.id,nodeId:key.nodeId,meshId:key.meshId,name:mesh.name||`Mesh ${count}`});}}
+  for(const plan of plans){
+    const{mesh,association,key,topology}=plan;
+    const regionCount=topology?.regions.length??0;
+    const regions=allowRegionSplit&&regionCount>1&&regionCount<=MAX_REGION_COMPONENTS?topology!.regions:[];
+    if(regions.length>1&&mesh.parent){
+      const parent=mesh.parent;
+      const group=new THREE.Group();
+      group.name=`${mesh.name||'Component'} Regions`;
+      group.position.copy(mesh.position);group.quaternion.copy(mesh.quaternion);group.scale.copy(mesh.scale);group.visible=mesh.visible;
+      parent.add(group);
+      for(const child of [...mesh.children])group.add(child);
+      for(const region of regions){
+        count+=1;
+        const extracted=regionGeometry(mesh.geometry,region);
+        const materials=Array.isArray(mesh.material)?mesh.material.map(material=>material.clone()):mesh.material.clone();
+        const regionMesh=new THREE.Mesh(extracted.geometry,materials);
+        regionMesh.name=`${mesh.name||`Mesh ${count}`} · Region ${region.islandIndex+1}`;
+        regionMesh.position.copy(extracted.center);
+        group.add(regionMesh);
+        const id=`${key.id}_region_${pad(region.islandIndex,3)}`;
+        parts.push({mesh:regionMesh,id,nodeId:key.nodeId,meshId:key.meshId,name:regionMesh.name,sourceRegionIds:[`${key.meshId}_prim_${pad(association.primitives??0,2)}_island_${pad(region.islandIndex,3)}`]});
+      }
+      parent.remove(mesh);disposeDetachedMesh(mesh);
+    }else{
+      count+=1;
+      parts.push({mesh,id:key.id,nodeId:key.nodeId,meshId:key.meshId,name:mesh.name||`Mesh ${count}`});
+    }
+  }
   for(const part of parts)initializePart(part);clone.updateMatrixWorld(true);
   const components:ModelManifest['components']=[],configs:ModelConfiguration['components']={};
   for(const part of parts){const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:[],materialSlotIds:[]});configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:{...EMPTY_TRANSFORM},visible:true,deleted:false};}
@@ -62,6 +92,24 @@ function normalizeAngle(value:number){while(value>Math.PI)value-=Math.PI*2;while
 
 function SelectionIndicator({target,label,visible}:{target?:THREE.Object3D;label?:string;visible:boolean}){const box=useMemo(()=>new THREE.Box3(),[]);const helper=useMemo(()=>{const next=new THREE.Box3Helper(box,'#4cc9ff');const material=next.material as THREE.LineBasicMaterial;material.depthTest=false;material.transparent=true;material.opacity=.95;next.renderOrder=1000;return next;},[box]);const labelRef=useRef<THREE.Group>(null),size=useMemo(()=>new THREE.Vector3(),[]),center=useMemo(()=>new THREE.Vector3(),[]);useEffect(()=>()=>{helper.geometry.dispose();(helper.material as THREE.LineBasicMaterial).dispose();},[helper]);useFrame(()=>{const show=Boolean(visible&&target);helper.visible=show;if(labelRef.current)labelRef.current.visible=show;if(!show||!target)return;target.updateWorldMatrix(true,true);box.setFromObject(target);if(box.isEmpty()){helper.visible=false;if(labelRef.current)labelRef.current.visible=false;return;}box.getCenter(center);box.getSize(size);const offset=Math.max(size.length()*.04,.02);if(labelRef.current)labelRef.current.position.set(center.x,box.max.y+offset,center.z);});return <><primitive object={helper}/><group ref={labelRef} visible={false}><Html center style={{pointerEvents:'none'}}><div data-testid="selection-indicator" style={{whiteSpace:'nowrap',border:'1px solid #4cc9ff',borderRadius:6,background:'rgba(7, 18, 31, 0.92)',color:'#e9f8ff',padding:'4px 8px',fontSize:11,fontWeight:700,boxShadow:'0 2px 12px rgba(0,0,0,.35)'}}>{label??'Selected component'}</div></Html></group></>;}
 
+function SelectionOrbitTarget({target,enabled,revision}:{target?:THREE.Object3D;enabled:boolean;revision:string}){
+  const camera=useThree(state=>state.camera);
+  const controls=useThree(state=>(state as unknown as{controls?:OrbitControlsLike}).controls);
+  useEffect(()=>{
+    if(!enabled||!target||!controls?.target)return;
+    target.updateWorldMatrix(true,true);
+    const box=new THREE.Box3().setFromObject(target);
+    if(box.isEmpty())return;
+    const center=box.getCenter(new THREE.Vector3());
+    const delta=center.clone().sub(controls.target);
+    if(delta.lengthSq()<1e-12)return;
+    camera.position.add(delta);
+    controls.target.copy(center);
+    controls.update();
+  },[camera,controls,enabled,target,revision]);
+  return null;
+}
+
 function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const gltf=useGLTF(url);const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;const prepared=useMemo(()=>prepare(gltf.scene,associations,modelId),[gltf.scene,associations,modelId]);const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]),loadReported=useRef(false),dragRef=useRef<DragSnapshot|null>(null);
@@ -69,11 +117,12 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   useEffect(()=>{if(!configuration||!manifest)return;prepared.scene.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;if(!id)return;const state=configuration.components[id];if(!state)return;const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);object.visible=state.visible&&!state.deleted&&!state.variantId;const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];for(const[index,material]of materials.entries()){if(!(material instanceof THREE.MeshStandardMaterial))continue;const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);}});},[configuration,manifest,prepared.scene]);
   useEffect(()=>{let cancelled=false;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];if(!configuration)return()=>{cancelled=true;};const tasks=Object.entries(configuration.components).filter(([,state])=>Boolean(state.variantId)&&state.visible&&!state.deleted).map(async([id,state])=>{const variant=state.variantId?variants[state.variantId]:undefined;if(!variant)return;let sourceObject:THREE.Object3D|undefined;prepared.scene.traverse(object=>{if(object.userData.__componentId===id)sourceObject=object;});if(!sourceObject?.parent)return;const instance=await variantScene(variant.signedUrl);if(cancelled){disposeObject3D(instance);return;}instance.name=`Variant ${variant.name}`;instance.traverse(object=>{object.userData.__componentId=id;});sourceObject.parent.add(instance);instance.position.copy(sourceObject.position);instance.rotation.copy(sourceObject.rotation);const box=new THREE.Box3().setFromObject(instance),size=new THREE.Vector3();box.getSize(size);if(variant.dimensionPolicy==='AUTO_FIT'&&size.x>0&&size.y>0&&size.z>0)instance.scale.set(state.dimensionsMm.width/1000/size.x*state.transform.scale[0],state.dimensionsMm.height/1000/size.y*state.transform.scale[1],state.dimensionsMm.depth/1000/size.z*state.transform.scale[2]);variantInstances.current.push(instance);highlight(instance,useEditorStore.getState().selected);});void Promise.all(tasks);return()=>{cancelled=true;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];};},[configuration,variants,prepared.scene]);
   useEffect(()=>{highlight(prepared.scene,selected);for(const instance of variantInstances.current)highlight(instance,selected);},[prepared.scene,selected]);useEffect(()=>{if(!groupRef.current||!configuration)return;const transform=configuration.placement.transform;groupRef.current.position.fromArray(transform.position);groupRef.current.rotation.set(...transform.rotation);groupRef.current.scale.fromArray(transform.scale);},[configuration?.placement.transform]);
-  const selectionTarget=useMemo(()=>findComponentObject(prepared.scene,selected),[prepared.scene,selected]);const selectedDefinition=manifest?.components.find(item=>item.id===selected),selectedState=selected?configuration?.components[selected]:undefined,selectionVisible=Boolean(selectedState?.visible&&!selectedState.deleted);const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
+  const selectionTarget=useMemo(()=>findComponentObject(prepared.scene,selected),[prepared.scene,selected]);const selectedDefinition=manifest?.components.find(item=>item.id===selected),selectedState=selected?configuration?.components[selected]:undefined,selectionVisible=Boolean(selectedState?.visible&&!selectedState.deleted);const focusRevision=selectedState?`${selected}|${selectedState.transform.position.join(',')}|${selectedState.transform.rotation.join(',')}|${selectedState.dimensionsMm.width},${selectedState.dimensionsMm.height},${selectedState.dimensionsMm.depth}`:'';const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
   const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible}/>;
+  const orbitTarget=<SelectionOrbitTarget target={selectionTarget} enabled={Boolean(phase==='EDITOR'&&configuration?.placement.locked&&selectionVisible)} revision={focusRevision}/>;
   if(phase==='EDITOR'&&!configuration?.placement.locked)return <><TransformControls mode={placementMode} onObjectChange={()=>{const object=groupRef.current;if(!object)return;setPlacementTransform({position:object.position.toArray() as[number,number,number],rotation:[object.rotation.x,object.rotation.y,object.rotation.z],scale:object.scale.toArray() as[number,number,number]});}}>{model}</TransformControls>{indicator}</>;
   const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls object={selectionTarget} mode={componentMode} showX={componentMode!=='scale'||selectedDefinition.editableAxes.x} showY={componentMode!=='scale'||selectedDefinition.editableAxes.y} showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z} onMouseDown={()=>{dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};}} onMouseUp={()=>{const start=dragRef.current;if(!start)return;const finalPosition=selectionTarget.position.clone(),finalRotation=selectionTarget.rotation.clone(),finalScale=selectionTarget.scale.clone();selectionTarget.position.copy(start.position);selectionTarget.rotation.copy(start.rotation);selectionTarget.scale.copy(start.scale);const actions:EditorAction[]=[];if(componentMode==='translate'){(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_POSITION',componentId:selectedDefinition.id,axis,value:start.state.transform.position[index]+(finalPosition.getComponent(index)-start.position.getComponent(index))*1000,source:'MANUAL'}));}else if(componentMode==='rotate'){(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));}else if(selectedDefinition.scalingMode==='AXIS_SCALE'){const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!selectedDefinition.editableAxes[axis])return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});}dragRef.current=null;if(actions.length)dispatchBatch(actions,`Direct ${componentMode} ${selectedDefinition.name}`);}}/>:null;
-  return <>{model}{componentControls}{indicator}</>;
+  return <>{model}{componentControls}{indicator}{orbitTarget}</>;
 }
 
 function NavigationAids(){return <><Grid infiniteGrid args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
