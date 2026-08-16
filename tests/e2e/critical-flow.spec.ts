@@ -66,20 +66,20 @@ test('Import → prepare → lock → customize → undo/redo → save version �
   await expect(page.locator('.component-card').first()).toBeVisible();
 
   await page.getByLabel('Editable').check();
-  await page.getByLabel('Scaling').selectOption('AXIS_SCALE');
+  await page.locator('label:has-text("Scaling") + select').selectOption('AXIS_SCALE');
   await page.getByLabel('X').first().check();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
 
   await expect(page.getByRole('button',{name:'Lock placement'})).toBeVisible();
   await page.getByRole('button',{name:'Lock placement'}).click();
-  const width=page.getByLabel('WIDTH (mm)');
+  const width=page.locator('label:has-text("WIDTH (mm)") + input');
   await expect(width).toBeEnabled();
   const initialWidth=await width.inputValue();
   const changedWidth=String(Math.max(1,Math.round(Number(initialWidth)*0.9)));
   await width.fill(changedWidth);
   await expect(width).toHaveValue(changedWidth);
 
-  const material=page.getByLabel('Material');
+  const material=page.locator('label:has-text("Material") + select');
   await material.selectOption('mat_oak_light');
   await expect(material).toHaveValue('mat_oak_light');
   await page.getByRole('button',{name:'Undo'}).click();
