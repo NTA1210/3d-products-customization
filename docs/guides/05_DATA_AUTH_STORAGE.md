@@ -1,8 +1,8 @@
-# 05 - Data, Auth & Storage
+# 05 - Dữ liệu, xác thực và Storage
 
-Guide này giải thích PostgreSQL/Prisma, Supabase Auth và Supabase private Storage.
+Tài liệu này giải thích PostgreSQL/Prisma, Supabase Auth và Supabase private Storage.
 
-## 1. Database
+## 1. Cơ sở dữ liệu
 
 Prisma schema:
 
@@ -31,42 +31,42 @@ Các entity chính:
 - `QuoteRequest`
 - `Quote`
 
-## 2. Prisma commands
+## 2. Các lệnh Prisma
 
-Generate client:
+Tạo client:
 
 ```bash
 pnpm --filter @product3d/api prisma:generate
 ```
 
-Dev migration:
+Migration môi trường phát triển:
 
 ```bash
 pnpm --filter @product3d/api prisma:migrate
 ```
 
-Production migration:
+Migration production:
 
 ```bash
 pnpm --filter @product3d/api exec prisma migrate deploy
 ```
 
-Seed:
+Tạo dữ liệu seed:
 
 ```bash
 pnpm --filter @product3d/api prisma:seed
 ```
 
-## 3. Migration rule
+## 3. Quy tắc migration
 
 Khi đổi schema:
 
 1. sửa `schema.prisma`.
 2. tạo migration.
-3. generate Prisma Client.
-4. cập nhật API + worker cùng contract.
+3. tạo lại Prisma Client.
+4. cập nhật API + worker theo cùng contract.
 5. chạy test/build.
-6. production rollout theo thứ tự migration → API → workers → web.
+6. rollout production theo thứ tự migration → API → worker → web.
 
 Không sửa database production thủ công rồi bỏ qua migration trong repo.
 
@@ -79,7 +79,7 @@ NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ```
 
-Backend/worker dùng server-side configuration:
+Backend/worker dùng cấu hình phía server:
 
 ```env
 SUPABASE_URL
@@ -87,62 +87,62 @@ SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SECRET_KEY
 ```
 
-Browser sign-in lấy session token. `authFetch` gắn token vào:
+Trình duyệt đăng nhập để lấy session token. `authFetch` gắn token vào:
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-NestJS `SupabaseAuthGuard` xác minh token và gắn authenticated user vào request.
+NestJS `SupabaseAuthGuard` xác minh token và gắn người dùng đã xác thực vào request.
 
-## 5. User sync
+## 5. Đồng bộ người dùng
 
-Các business resource trong PostgreSQL dùng authenticated Supabase identity làm owner. Khi debug lỗi foreign key/user ownership, kiểm tra flow auth bootstrap/user persistence trước khi bỏ ownership check.
+Các business resource trong PostgreSQL dùng danh tính Supabase đã xác thực làm owner. Khi debug lỗi foreign key/quyền sở hữu user, kiểm tra luồng auth bootstrap và user persistence trước khi bỏ ownership check.
 
 ## 6. Supabase Storage
 
-Bucket canonical là private:
+Bucket chuẩn là private:
 
 ```env
 SUPABASE_STORAGE_BUCKET=product3d
 ```
 
-Setup:
+Thiết lập:
 
 ```bash
 pnpm --filter @product3d/api storage:setup
 ```
 
-`storage:setup` tạo/verify bucket và áp dụng file-size limit từ `MAX_ASSET_BYTES`.
+`storage:setup` tạo/xác minh bucket và áp dụng giới hạn kích thước file từ `MAX_ASSET_BYTES`.
 
 ## 7. Signed upload
 
 Upload source GLB:
 
 ```text
-Browser
+Trình duyệt
 → API tạo ModelAsset + sourceObjectKey
 → API tạo signed upload grant
-→ Browser upload trực tiếp vào Supabase Storage
-→ Browser gọi analyze
+→ Trình duyệt upload trực tiếp vào Supabase Storage
+→ Trình duyệt gọi analyze
 ```
 
 Lợi ích: file lớn không cần proxy toàn bộ qua NestJS process.
 
 ## 8. Signed download
 
-Private artifact không nên public vĩnh viễn.
+Private artifact không nên được public vĩnh viễn.
 
 ```text
 DB giữ object key
 → API kiểm tra ownership
-→ API mint signed URL ngắn hạn
+→ API tạo signed URL ngắn hạn
 → client dùng URL
 ```
 
-Không persist signed URL như canonical state vì URL hết hạn.
+Không lưu signed URL như canonical state vì URL sẽ hết hạn.
 
-## 9. Object key namespaces
+## 9. Namespace của object key
 
 Ví dụ:
 
@@ -155,11 +155,11 @@ renders/<projectId>/<renderJobId>/...
 ai-visualizations/<userId>/<projectId>/...
 ```
 
-Source GLB immutable; normalize/export/render/AI tạo object mới.
+Source GLB là bất biến; normalize/export/render/AI tạo object mới.
 
 ## 10. Khi thêm loại artifact mới
 
-1. Chọn namespace rõ capability.
+1. Chọn namespace thể hiện rõ capability.
 2. Server tạo object key.
 3. Worker ghi artifact bằng service secret.
 4. DB chỉ lưu key/resource ID.
@@ -167,7 +167,7 @@ Source GLB immutable; normalize/export/render/AI tạo object mới.
 6. Read endpoint tạo signed URL mới.
 7. Định nghĩa retention/cleanup policy nếu artifact có thể tích tụ.
 
-## 11. Secret handling
+## 11. Quản lý secret
 
 Không bao giờ đưa các biến sau vào client bundle:
 
@@ -179,7 +179,7 @@ REDIS_URL
 METRICS_BEARER_TOKEN
 ```
 
-Biến public hợp lệ:
+Các biến public hợp lệ:
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
