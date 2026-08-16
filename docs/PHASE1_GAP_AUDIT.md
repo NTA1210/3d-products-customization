@@ -28,7 +28,7 @@ This audit deliberately distinguishes **implementation**, **deterministic CI reg
 | 14 | Reload project and retain exact state | ✅ | Project/version hydrate path + exact serialization/reload integration assertion. |
 | 15 | Run AI Suggest and receive structured actions | 🟡 | Implemented server-side with render input, schema-constrained provider response and quota; requires configured OpenAI + render runtime for live proof. |
 | 16 | Apply valid AI suggestion through validator | ✅ | AI validation produces only validated actions; web applies via normal `dispatchBatch` / editor pipeline. |
-| 17 | Run Manufacturability Check | 🟡 | Deterministic engine is testable in CI; Trimesh geometry worker is implemented but live worker runtime is external to standard CI. |
+| 17 | Run Manufacturability Check | ✅ | Deterministic manufacturing rules are tested in Vitest and the actual Trimesh geometry analyzer is installed/executed in standard CI against all four GLB fixtures. Live BullMQ/storage orchestration remains a staging certification boundary, not an implementation gap. |
 | 18 | Render preview | 🟡 | Blender multi-view/SPIN_360 queue/worker implemented; Blender binary is not run by standard CI. |
 | 19 | Export customized GLB | ✅ | Current/saved configuration baking, variant composition and Khronos validation before storage; browser Export command path is exercised in Chromium CI with API boundary mocked. |
 | 20 | Re-import exported GLB successfully | 🟡 | Exported GLB is Khronos-validator checked before completion. A manual `Staging E2E` workflow now performs live export→download→GLB-header verification→re-import→analyze when a staging deployment and test credentials are configured; it remains 🟡 until that workflow succeeds against the live environment. |
@@ -39,10 +39,10 @@ This audit deliberately distinguishes **implementation**, **deterministic CI reg
 
 | Scenario | Status | Evidence |
 |---|---|---|
-| Proper multi-component model | ✅ | `examples/fixtures/proper-components.glb` + Khronos fixture test + Chromium critical-flow fixture. |
-| One mesh with multiple disconnected geometry islands | ✅ | `examples/fixtures/disconnected-islands.glb` + analyzer island behavior/tests. |
-| One continuous mesh fallback/warning | ✅ | `examples/fixtures/continuous-mesh.glb` + warning/fallback behavior. |
-| Multi-material fixture required by test strategy | ✅ | `examples/fixtures/multi-material.glb`, Khronos validated in CI. |
+| Proper multi-component model | ✅ | `examples/fixtures/proper-components.glb` + Khronos fixture test + Chromium critical-flow fixture + Trimesh worker smoke. |
+| One mesh with multiple disconnected geometry islands | ✅ | `examples/fixtures/disconnected-islands.glb` + analyzer island behavior/tests + Trimesh assertion for multiple bodies. |
+| One continuous mesh fallback/warning | ✅ | `examples/fixtures/continuous-mesh.glb` + warning/fallback behavior + Trimesh assertion for one body. |
+| Multi-material fixture required by test strategy | ✅ | `examples/fixtures/multi-material.glb`, Khronos validated and Trimesh-analyzed in CI. |
 
 ## Acceptance-criteria coverage summary
 
@@ -81,13 +81,19 @@ This audit deliberately distinguishes **implementation**, **deterministic CI reg
 
 ### Deterministic browser E2E — ✅
 
-The main CI now runs a Playwright/Chromium critical-flow regression using the real Next.js UI, real GLB fixture, Three.js/R3F viewer, editor state, Action/Constraint pipeline and Undo/Redo. Only external Supabase/API network boundaries are mocked so the test is deterministic.
+The main CI runs a Playwright/Chromium critical-flow regression using the real Next.js UI, real GLB fixture, Three.js/R3F viewer, editor state, Action/Constraint pipeline and Undo/Redo. Only external Supabase/API network boundaries are mocked so the test is deterministic.
 
 Covered browser path:
 
 `Sign in → Import GLB → Asset Preparation → Save Manifest → Place/Lock → Dimension → Material → Undo → Redo → Create Project → Save Version → Export GLB`.
 
 This is browser/UI regression evidence. It is intentionally **not** described as proof that a deployed Supabase/PostgreSQL/Redis/worker stack is healthy.
+
+### Native geometry worker CI — ✅
+
+Standard CI installs `workers/geometry/requirements.txt` and executes `workers/geometry/analyze.py` against all four Phase 1 GLB fixtures. The smoke test verifies non-empty geometry facts, disconnected-body detection, the `geometry:multiple-bodies` issue, and the continuous-mesh single-body case.
+
+This demonstrates the Trimesh runtime itself on a clean GitHub runner. It does not replace a live queue/storage smoke test for the deployed geometry worker service.
 
 ### Live staging E2E path — available, runtime evidence pending
 
@@ -103,17 +109,21 @@ The staging test uploads `proper-components.glb`, waits for the real asset pipel
 
 The workflow's presence is not counted as a successful live proof until an actual staging run succeeds.
 
+### Observability — implemented, ingestion proof pending
+
+The API exposes Prometheus-compatible `/api/metrics`, derives worker/job metrics from persisted PostgreSQL state, accepts authenticated `viewer_load_time` telemetry, and supports an optional scrape bearer token. Standard tests validate the exposition output. A production metrics backend still needs to scrape it and verify dashboards/alerts in the chosen deployment environment.
+
 ### External providers/native tools
 
-Standard CI validates TypeScript builds/tests, Python syntax, and the deterministic Chromium flow. It does not execute Blender, production Trimesh workloads, live Supabase signed storage, or OpenAI requests. These require the staging/deployment smoke path and provider/runtime configuration.
+Standard CI validates TypeScript builds/tests, Python syntax, executable Trimesh geometry analysis, and the deterministic Chromium flow. It does not execute Blender, live Supabase signed storage/queue orchestration, or OpenAI requests. These require the staging/deployment smoke path and provider/runtime configuration.
 
 ## Recommended remaining closure order
 
 1. Configure a staging deployment + GitHub `staging` environment secrets and run `Staging E2E` successfully.
-2. Add live smoke coverage for Trimesh manufacturability and Blender preview/render workers.
+2. Add live smoke coverage for the deployed geometry queue and Blender preview/render workers; Trimesh itself is already exercised in standard CI.
 3. Run AR preview on at least one supported real mobile/device browser and capture evidence.
 4. Add a controlled live AI Suggest smoke test with quota/cost guardrails.
-5. Connect structured logs to the deployment's chosen metrics/trace backend and verify alerting/metrics ingestion.
-6. Keep the Chromium critical-flow test required in CI to prevent editor-flow regressions.
+5. Connect `/api/metrics` to the deployment's metrics backend and verify scrape ingestion, dashboarding and alerting.
+6. Keep the Chromium critical-flow and Trimesh fixture smoke tests required in CI to prevent regressions.
 
-Until the live-system items above are exercised, the repository should be described as **Phase 1 feature-complete in code with browser critical-flow regression evidence and remaining live runtime/provider certification gaps**, not as fully production-certified.
+Until the live-system items above are exercised, the repository should be described as **Phase 1 feature-complete in code with browser critical-flow and native Trimesh runtime evidence, plus remaining live deployment/provider certification gaps**, not as fully production-certified.
