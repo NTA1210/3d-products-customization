@@ -2,6 +2,14 @@
 
 Production-oriented Phase 1 implementation of a **customer-asset-first 3D product configurator**. The canonical 3D comes from customer GLB assets; AI does not generate or replace the core 3D model. Manual controls, styles/presets and AI suggestions all resolve to structured editor actions that must pass schema, constraint and compatibility validation before changing business state.
 
+## Source code documentation
+
+Nếu bạn mới vào repository hoặc cần biết **cách chạy, đọc, sửa và mở rộng toàn bộ source code**, bắt đầu tại:
+
+**[`docs/SOURCE_CODE_GUIDE.md`](docs/SOURCE_CODE_GUIDE.md)**
+
+Guide chính đóng vai trò mục lục và dẫn tới các tài liệu riêng theo chủ đề: local setup, kiến trúc, web editor, API, database/Supabase, workers, AI/render/manufacturing, testing/CI, deployment, troubleshooting và extension guide.
+
 ## Implemented capabilities
 
 - Supabase Auth and private Supabase Storage with short-lived signed upload/download grants.
@@ -31,7 +39,7 @@ Production-oriented Phase 1 implementation of a **customer-asset-first 3D produc
 - `workers/geometry` — Trimesh geometry manufacturability analysis.
 - `workers/ai-visualization` — queued lifestyle image generation.
 - `examples/fixtures` — required model-quality/test scenarios.
-- `docs` — architecture, API, deployment and Phase 1 status/audit.
+- `docs` — architecture, API, deployment, source guides and Phase 1 status/audit.
 
 ## Local prerequisites
 
@@ -89,12 +97,13 @@ Background workers are independent processes and should be started/deployed for 
 
 ## Validation boundary
 
-Repository CI currently validates Prisma generation, Python worker syntax, executable domain/integration tests, all four GLB fixtures with Khronos glTF Validator, and production TypeScript/Next builds.
+Main CI currently validates Prisma generation, Python worker syntax, executable Trimesh geometry analysis on all four required GLB fixtures, Vitest domain/integration coverage, production workspace build and Playwright/Chromium critical-flow E2E.
 
-CI does **not** currently stand up live Supabase/Redis/PostgreSQL/Blender/OpenAI services for a browser-level full-system E2E run. The export worker validates every generated GLB before storing it, but a live automated `export → signed download → import again` round-trip remains a distinct end-to-end evidence gap. These gaps are tracked explicitly rather than being reported as completed.
+The browser CI intentionally mocks external Supabase/API network boundaries for deterministic regression. A separate manual staging workflow exists for live Supabase/Redis/PostgreSQL/worker export→re-import evidence. Blender, OpenAI and real-device AR still require their corresponding configured runtime/provider/device environments and are tracked explicitly rather than being reported as automatically certified by compilation.
 
 See:
 
+- `docs/SOURCE_CODE_GUIDE.md` — how to use and maintain the complete source tree.
 - `docs/IMPLEMENTATION_STATUS.md` — feature/evidence matrix.
 - `docs/PHASE1_GAP_AUDIT.md` — Definition-of-Done audit against the specification.
 - `docs/API.md` — implemented HTTP surface.
