@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {useEditorStore} from '../lib/store';
 import {useMeasurementStore,type RuntimeMeasurement} from '../lib/measurement-store';
+import {flattenComponentObjects,hasNestedComponentObjects} from '../lib/component-scene';
 import {demoMaterials} from '../lib/materials';
 import {reportViewerLoad} from '../lib/metrics';
 
@@ -84,6 +85,15 @@ function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssoci
       parts.push({mesh,id:key.id,nodeId:key.nodeId,meshId:key.meshId,name:mesh.name||`Mesh ${count}`});
     }
   }
+
+  // Source GLB nodes may nest meshes under other meshes. In the editor that
+  // would make a parent component's transform propagate to child components.
+  // Flatten every runtime component beneath one neutral sibling layer while
+  // preserving the original world transform and stable component IDs.
+  const runtimeComponents=parts.map(part=>({id:part.id,object:part.mesh as THREE.Object3D}));
+  flattenComponentObjects(clone,runtimeComponents);
+  if(hasNestedComponentObjects(runtimeComponents))throw new Error('EDITOR_COMPONENT_HIERARCHY_NOT_FLAT');
+
   for(const part of parts)initializePart(part);clone.updateMatrixWorld(true);
   const components:ModelManifest['components']=[],configs:ModelConfiguration['components']={};
   for(const part of parts){const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:[],materialSlotIds:[]});configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:{...EMPTY_TRANSFORM},visible:true,deleted:false};}
