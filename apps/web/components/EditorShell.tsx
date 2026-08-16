@@ -44,7 +44,15 @@ function downloadJson(name: string, value: unknown) {
   URL.revokeObjectURL(url);
 }
 
-function AssetPreparation() {
+function AssetPreparation({
+  pipeline,
+  canRetry,
+  onRetry,
+}: {
+  pipeline: AssetPipelineStatus;
+  canRetry: boolean;
+  onRetry: () => void;
+}) {
   const {
     manifest,
     analysis,
@@ -172,6 +180,30 @@ function AssetPreparation() {
       )}
       {tooManyRegions && <div className="warning">{tooManyRegions.message}</div>}
       {continuousMesh && <div className="warning">{continuousMesh.message}</div>}
+
+      {!assetId && pipeline === 'failed' && (
+        <div className="error asset-pipeline-error">
+          <strong>Asset pipeline failed · chưa có Asset ID</strong>
+          <div>
+            Manifest chưa thể lưu lên backend. Kiểm tra Supabase/API/Redis/asset-processing worker,
+            sau đó chạy lại pipeline bằng file GLB vừa chọn.
+          </div>
+          <button type="button" disabled={!canRetry} onClick={onRetry}>
+            Retry Asset Processing
+          </button>
+        </div>
+      )}
+      {!assetId && pipeline !== 'failed' && (
+        <div className="warning">
+          Backend asset chưa sẵn sàng. Trạng thái hiện tại: <b>{pipeline}</b>. Nút Save sẽ tự mở khi
+          pipeline hoàn tất và Asset ID được tạo.
+        </div>
+      )}
+      {assetId && (
+        <div className="asset-ready-note">
+          Asset backend ready · ID <code>{assetId}</code>
+        </div>
+      )}
 
       <div className="customization-card" data-testid="preparation-customization">
         <div className="eyebrow">Quyền Customize</div>
@@ -705,6 +737,7 @@ export default function EditorShell() {
   const auth = useAuthStore();
   const [pipeline, setPipeline] = useState<AssetPipelineStatus>('idle');
   const abort = useRef<AbortController | null>(null);
+  const lastUploadedFile = useRef<File | null>(null);
   const selected = store.manifest?.components.find((item) => item.id === store.selected);
   const canUndo = store.undoStack.length > 0;
   const canRedo = store.redoStack.length > 0;
@@ -724,20 +757,16 @@ export default function EditorShell() {
   const infoNoteCount =
     store.analysis?.warnings.filter((warning) => warning.severity === 'INFO').length ?? 0;
 
-  const upload = async (file?: File) => {
-    if (!file) return;
-    if (!auth.user) {
-      useEditorStore.setState({ error: 'Sign in before importing an asset.' });
-      return;
-    }
-    if (!file.name.toLowerCase().endsWith('.glb')) {
-      useEditorStore.setState({ error: 'Phase 1 accepts GLB.' });
-      return;
-    }
+  const runPipeline = async (file: File, resetLocalAsset: boolean) => {
     abort.current?.abort();
     abort.current = new AbortController();
-    if (store.assetUrl?.startsWith('blob:')) URL.revokeObjectURL(store.assetUrl);
-    store.setUploadedAsset(file.name, URL.createObjectURL(file));
+    useEditorStore.setState({ error: undefined });
+
+    if (resetLocalAsset) {
+      if (store.assetUrl?.startsWith('blob:')) URL.revokeObjectURL(store.assetUrl);
+      store.setUploadedAsset(file.name, URL.createObjectURL(file));
+    }
+
     try {
       const result = await startAssetPipeline(file, setPipeline, abort.current.signal);
       store.setAssetAnalysis(result.assetId, result.analysis);
@@ -748,6 +777,32 @@ export default function EditorShell() {
         error: error instanceof Error ? error.message : 'Asset pipeline failed.',
       });
     }
+  };
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    if (!auth.user) {
+      useEditorStore.setState({ error: 'Sign in before importing an asset.' });
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.glb')) {
+      useEditorStore.setState({ error: 'Phase 1 accepts GLB.' });
+      return;
+    }
+
+    lastUploadedFile.current = file;
+    await runPipeline(file, true);
+  };
+
+  const retryPipeline = async () => {
+    const file = lastUploadedFile.current;
+    if (!file) {
+      useEditorStore.setState({
+        error: 'Không còn file GLB trong phiên hiện tại. Hãy chọn Import GLB lại.',
+      });
+      return;
+    }
+    await runPipeline(file, false);
   };
 
   const importManifest = async (file?: File) => {
@@ -859,7 +914,15 @@ export default function EditorShell() {
         </main>
 
         <aside className="panel right">
-          {store.phase === 'PREPARE' ? <AssetPreparation /> : <Inspector />}
+          {store.phase === 'PREPARE' ? (
+            <AssetPreparation
+              pipeline={pipeline}
+              canRetry={Boolean(lastUploadedFile.current)}
+              onRetry={() => void retryPipeline()}
+            />
+          ) : (
+            <Inspector />
+          )}
           {store.error && (
             <div className="error" onClick={store.clearError}>
               {store.error}
@@ -878,6 +941,7 @@ export default function EditorShell() {
         <span className={`dot ${store.configuration?.placement.locked ? 'ok' : ''}`} />
         {status}
         <span>Asset: {pipeline}</span>
+        {store.assetId && <span>Asset ID: {store.assetId.slice(0, 8)}</span>}
         {store.projectId && <span>Project: {store.projectId.slice(0, 8)}</span>}
         {store.configuration?.appliedStyleId && (
           <span>Style: {store.configuration.appliedStyleId}</span>
