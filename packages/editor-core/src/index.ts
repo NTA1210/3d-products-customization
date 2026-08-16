@@ -1,4 +1,4 @@
-import type { ComponentVariant,MaterialPreset,ModelConfiguration,ModelManifest } from '@product3d/model-schema';
+import type { ComponentVariant,MaterialPreset,ModelConfiguration,ModelManifest,TransformState } from '@product3d/model-schema';
 import type { EditorAction } from '@product3d/action-engine';
 import { EditorActionSchema } from '@product3d/action-engine';
 import { validateAction } from '@product3d/constraint-engine';
@@ -14,6 +14,30 @@ function componentAxis(property:'WIDTH'|'HEIGHT'|'DEPTH'){
   return property.toLowerCase() as 'width'|'height'|'depth';
 }
 
+function cloneTransform(transform:TransformState):TransformState{
+  return{
+    position:[...transform.position] as [number,number,number],
+    rotation:[...transform.rotation] as [number,number,number],
+    scale:[...transform.scale] as [number,number,number],
+  };
+}
+
+/**
+ * structuredClone preserves aliasing inside an object graph. Older viewer
+ * configurations were created with shallow copies of one EMPTY_TRANSFORM,
+ * which means multiple components can share the same position/rotation/scale
+ * arrays. Normalize transforms after cloning so an action can only mutate the
+ * component it targets (unless an explicit manifest dependency says otherwise).
+ */
+function cloneConfiguration(input:ModelConfiguration):ModelConfiguration{
+  const next=structuredClone(input);
+  next.placement.transform=cloneTransform(next.placement.transform);
+  for(const component of Object.values(next.components)){
+    component.transform=cloneTransform(component.transform);
+  }
+  return next;
+}
+
 function applyDependencyRules(before:ModelConfiguration,next:ModelConfiguration,manifest:ModelManifest,action:EditorAction){
   if(action.type!=='SET_DIMENSION'&&action.type!=='SET_POSITION')return;
   const triggerProperty=action.type==='SET_DIMENSION'?action.axis:'POSITION';
@@ -24,7 +48,10 @@ function applyDependencyRules(before:ModelConfiguration,next:ModelConfiguration,
     if(action.type==='SET_DIMENSION'){
       const key=componentAxis(action.axis);
       sourceDelta=next.components[action.componentId].dimensionsMm[key]-before.components[action.componentId].dimensionsMm[key];
-    }else sourceDelta=action.value;
+    }else{
+      const index={X:0,Y:1,Z:2}[action.axis];
+      sourceDelta=next.components[action.componentId].transform.position[index]-before.components[action.componentId].transform.position[index];
+    }
     let value=rule.formula.type==='SET_VALUE'?rule.formula.value:sourceDelta*rule.formula.factor;
     if(rule.formula.type==='CLAMPED_DELTA_FACTOR'){
       if(rule.formula.min!==undefined)value=Math.max(rule.formula.min,value);
@@ -60,7 +87,7 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
     if(!canApplyVariant(definition,variant))return {ok:false,code:'VARIANT_INCOMPATIBLE',message:'This variant is not compatible with the selected component.',action};
   }
 
-  const next=structuredClone(input);
+  const next=cloneConfiguration(input);
   const component=next.components[action.componentId];
   switch(action.type){
     case 'SET_DIMENSION': component.dimensionsMm[componentAxis(action.axis)]=action.valueMm; break;
@@ -84,7 +111,7 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
 }
 
 export function applyActions(actions:unknown[],manifest:ModelManifest,input:ModelConfiguration,resources:EditorResources={}):ApplyResult{
-  let current=structuredClone(input);
+  let current=cloneConfiguration(input);
   const accepted:EditorAction[]=[];
   for(const rawAction of actions){
     const result=applyAction(rawAction,manifest,current,resources);
