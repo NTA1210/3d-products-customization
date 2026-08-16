@@ -1,9 +1,9 @@
-# Variants, anchors, styles and presets
+# Variant, anchor, style và preset
 
-Variant catalog rows point to private Supabase Storage objects. `prisma:seed` uploads the bundled `wide-top-variant.glb` example when Supabase environment variables are configured.
+Các bản ghi trong variant catalog trỏ tới object riêng tư trên Supabase Storage. `prisma:seed` sẽ upload ví dụ `wide-top-variant.glb` đi kèm khi các biến môi trường Supabase đã được cấu hình.
 
-`GET /api/variants?groupId=&role=` returns compatible catalog metadata plus a short-lived signed asset URL. Runtime replacement uses bounds-center AUTO_FIT for the current component dimensions. Variant choice is stored as `configuration.components[id].variantId`, so Undo/Redo and Version snapshots include it.
+`GET /api/variants?groupId=&role=` trả về metadata catalog tương thích cùng một signed asset URL có thời hạn ngắn. Việc thay thế ở runtime sử dụng `AUTO_FIT` theo tâm bounds cho kích thước component hiện tại. Lựa chọn variant được lưu tại `configuration.components[id].variantId`, vì vậy Undo/Redo và snapshot Version đều bao gồm giá trị này.
 
-Style and user-preset rules use `@product3d/preset-engine`. Selectors target a stable component ID or semantic role. The compiler emits normal `EditorAction` objects, then `editor-core.applyActions` performs the same schema/constraint/compatibility/dependency path as manual edits. A style/preset is committed to history as one transaction in the web store.
+Các rule của style và user preset sử dụng `@product3d/preset-engine`. Selector nhắm tới stable component ID hoặc semantic role. Compiler tạo ra các object `EditorAction` thông thường, sau đó `editor-core.applyActions` đi qua cùng luồng schema/constraint/compatibility/dependency như chỉnh sửa thủ công. Một style/preset được commit vào history như một transaction duy nhất trong web store.
 
-Current anchor support includes manifest anchor definitions and the catalog's `BOUNDS_CENTER` auto-fit policy. Additional POINT/PLANE/AXIS authoring can be stored in `manifest.anchors` and is extended by later advanced fitting rules.
+Hỗ trợ anchor hiện tại bao gồm định nghĩa anchor trong manifest và policy auto-fit `BOUNDS_CENTER` của catalog. Việc author thêm POINT/PLANE/AXIS có thể được lưu trong `manifest.anchors` và được mở rộng bằng các quy tắc fitting nâng cao ở các phần sau.
