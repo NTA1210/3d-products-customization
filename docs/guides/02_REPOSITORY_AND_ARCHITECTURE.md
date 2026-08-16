@@ -1,8 +1,8 @@
-# 02 - Repository & Architecture
+# 02 - Repository và kiến trúc
 
-Guide này trả lời hai câu hỏi: **code nằm ở đâu?** và **một thay đổi đi qua hệ thống như thế nào?**
+Tài liệu này trả lời hai câu hỏi: **code nằm ở đâu?** và **một thay đổi đi qua hệ thống như thế nào?**
 
-## 1. Monorepo layout
+## 1. Cấu trúc monorepo
 
 ```text
 apps/
@@ -10,49 +10,49 @@ apps/
   api/                  NestJS + Prisma
 
 packages/
-  action-engine/        EditorAction schema
-  compatibility-engine/material/variant compatibility
-  constraint-engine/    lock, axis, min/max, units
-  editor-core/          apply action/batch + dependency resolution
-  model-schema/         Zod domain schemas
-  preset-engine/        preset/style transaction logic
-  manufacturing-engine/deterministic manufacturing rules
-  ai-engine/            structured AI response validation
-  collection-engine/    deterministic recommendation logic
-  shared/               shared constants/types
+  action-engine/        schema EditorAction
+  compatibility-engine/compatibility material/variant
+  constraint-engine/    lock, axis, min/max, unit
+  editor-core/          áp dụng action/batch + dependency resolution
+  model-schema/         Zod domain schema
+  preset-engine/        logic transaction preset/style
+  manufacturing-engine/quy tắc manufacturing xác định
+  ai-engine/            kiểm tra structured AI response
+  collection-engine/    logic recommendation xác định
+  shared/               constant/type dùng chung
 
 workers/
   asset-processing/     validate/analyze/normalize GLB
   export/               bake customized GLB + OBJ/STL
   render/               Blender multi-view / spin-360
-  geometry/             Trimesh manufacturability analysis
-  ai-visualization/     queued lifestyle visualization
+  geometry/             phân tích manufacturability bằng Trimesh
+  ai-visualization/     lifestyle visualization qua hàng đợi
 
 examples/
-  fixtures/             GLB test models
-  manifests/            sample manifest
-  materials/            sample catalogue data
+  fixtures/             model GLB dùng cho test
+  manifests/            manifest mẫu
+  materials/            dữ liệu catalog mẫu
 
-docs/                   architecture/API/deployment/guides
+docs/                   tài liệu architecture/API/deployment/guides
 ```
 
-## 2. Source of truth
+## 2. Nguồn dữ liệu chuẩn
 
 Đừng coi object Three.js đang hiển thị trên màn hình là dữ liệu chính.
 
-Thứ tự source of truth:
+Thứ tự nguồn dữ liệu chuẩn:
 
-1. **Original GLB** — asset khách hàng, immutable.
-2. **Normalized GLB** — derivative đã validate/normalize.
-3. **Manifest** — component/rule definition đã được người dùng xác nhận.
-4. **Configuration** — customization state hiện tại.
+1. **Original GLB** — asset khách hàng, bất biến.
+2. **Normalized GLB** — bản dẫn xuất đã validate/normalize.
+3. **Manifest** — định nghĩa component/rule đã được người dùng xác nhận.
+4. **Configuration** — trạng thái customization hiện tại.
 5. **ModelVersion** — snapshot của Configuration.
-6. **Three.js scene** — projection runtime.
-7. **Export/render/AI artifacts** — derivative output.
+6. **Three.js scene** — projection ở runtime.
+7. **Export/render/AI artifact** — output dẫn xuất.
 
 Khi debug sai state, ưu tiên kiểm tra Manifest/Configuration trước scene.
 
-## 3. Mutation pipeline
+## 3. Pipeline thay đổi trạng thái
 
 Mọi thay đổi component phải theo pipeline:
 
@@ -85,10 +85,10 @@ Các package cần đọc theo thứ tự khi debug action:
 5. `apps/web/lib/store.ts`
 6. `apps/web/components/ModelViewport.tsx`
 
-## 4. Asset lifecycle
+## 4. Vòng đời asset
 
 ```text
-Browser
+Trình duyệt
   → POST /assets/import
   → signed Supabase upload
   → POST /assets/:id/analyze
@@ -104,9 +104,9 @@ Browser
   → Editor
 ```
 
-Disconnected islands chỉ là **geometry candidates**, không tự động được coi là semantic component cho tới khi user xác nhận.
+Disconnected island chỉ là **geometry candidate**, không tự động được coi là semantic component cho tới khi người dùng xác nhận.
 
-## 5. Project lifecycle
+## 5. Vòng đời project
 
 ```text
 Asset + Manifest
@@ -118,9 +118,9 @@ Asset + Manifest
   → Render / Manufacturability / AR / RFQ
 ```
 
-`ModelVersion` không copy source GLB. Nó giữ configuration snapshot để tái tạo customization từ source + manifest + catalogue.
+`ModelVersion` không copy source GLB. Nó giữ configuration snapshot để tái tạo customization từ source + manifest + catalog.
 
-## 6. Background job architecture
+## 6. Kiến trúc background job
 
 ```text
 API producer
@@ -129,7 +129,7 @@ API producer
   → Supabase artifact + PostgreSQL Job state
 ```
 
-Job status chuẩn:
+Trạng thái job chuẩn:
 
 ```text
 QUEUED → PROCESSING → COMPLETED
@@ -137,11 +137,11 @@ QUEUED → PROCESSING → COMPLETED
                   ↘ FAILED
 ```
 
-Không implement tác vụ nặng bằng cách `await` Blender/Trimesh trong controller HTTP.
+Không triển khai tác vụ nặng bằng cách `await` Blender/Trimesh trong HTTP controller.
 
-## 7. Storage boundary
+## 7. Ranh giới Storage
 
-Browser:
+Trình duyệt:
 
 - Supabase publishable key.
 - signed upload token / signed download URL.
@@ -149,7 +149,7 @@ Browser:
 Server/worker:
 
 - `SUPABASE_SECRET_KEY`.
-- object key canonical.
+- object key chuẩn.
 
 Một số namespace chính:
 
@@ -164,7 +164,7 @@ ai-visualizations/...
 
 ## 8. Khi đọc source lần đầu
 
-Frontend path đề xuất:
+Đường đọc frontend được đề xuất:
 
 ```text
 apps/web/app/page.tsx
@@ -174,7 +174,7 @@ apps/web/app/page.tsx
 → packages/editor-core
 ```
 
-Backend path đề xuất:
+Đường đọc backend được đề xuất:
 
 ```text
 apps/api/src/main.ts
@@ -189,5 +189,5 @@ apps/api/src/main.ts
 
 - [../ARCHITECTURE.md](../ARCHITECTURE.md)
 - [04 - API Backend](04_API_BACKEND.md)
-- [06 - Workers & Pipelines](06_WORKERS_AND_PIPELINES.md)
-- [11 - Extension Guide](11_EXTENSION_GUIDE.md)
+- [06 - Worker và pipeline](06_WORKERS_AND_PIPELINES.md)
+- [11 - Hướng dẫn mở rộng](11_EXTENSION_GUIDE.md)
