@@ -1,2 +1,9 @@
 import EditorShell from '../components/EditorShell';
-export default function Home(){return <EditorShell/>}
+import SnapViewportHud from '../components/SnapViewportHud';
+
+export default function Home(){
+  return <>
+    <EditorShell/>
+    <SnapViewportHud/>
+  </>;
+}
