@@ -12,6 +12,7 @@ import {useEditorStore} from '../lib/store';
 import {useMeasurementStore,type RuntimeMeasurement} from '../lib/measurement-store';
 import {flattenComponentObjects,hasNestedComponentObjects} from '../lib/component-scene';
 import {demoMaterials} from '../lib/materials';
+import {resolveGroundBarrier} from '../lib/ground-barrier';
 import {useSnapInteractionStore,type LabelMode} from '../lib/snap-store';
 import {
   anchorWorldPosition,
@@ -26,10 +27,12 @@ const MAX_REGION_COMPONENTS=32;
 const MAX_MODEL_COMPONENTS=96;
 const SNAP_PIXELS=18;
 const NEAREST_INDICATOR_PIXELS=96;
+const GROUND_BREAK_PIXELS=32;
 type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
 type GltfAssociation={nodes?:number;meshes?:number;primitives?:number};
 type PreparedPart={mesh:THREE.Mesh;id:string;nodeId:string;meshId:string;name:string;sourceRegionIds?:string[]};
 type DragSnapshot={position:THREE.Vector3;rotation:THREE.Euler;scale:THREE.Vector3;state:ModelConfiguration['components'][string]};
+type GroundDragState={released:boolean;breakDistanceWorld:number};
 type OrbitControlsLike={target:THREE.Vector3;update:()=>void};
 type ActiveSnapCandidate=RuntimeSnapCandidate&{ready:boolean};
 const variantCache=new Map<string,Promise<THREE.Object3D>>();
@@ -122,6 +125,7 @@ function highlight(root:THREE.Object3D,selected?:string){root.traverse(object=>{
 function findComponentObject(root:THREE.Object3D,componentId?:string){if(!componentId)return undefined;let match:THREE.Mesh|undefined;root.traverse(object=>{if(!match&&object instanceof THREE.Mesh&&object.userData.__componentId===componentId)match=object;});return match;}
 function componentObjectMap(root:THREE.Object3D){const result=new Map<string,THREE.Object3D>();root.traverse(object=>{const id=object.userData.__componentId as string|undefined;if(id&&!result.has(id))result.set(id,object);});return result;}
 function normalizeAngle(value:number){while(value>Math.PI)value-=Math.PI*2;while(value<-Math.PI)value+=Math.PI*2;return value;}
+function moveObjectWorldY(object:THREE.Object3D,deltaWorldY:number){if(Math.abs(deltaWorldY)<1e-9)return;object.updateWorldMatrix(true,false);const worldPosition=object.getWorldPosition(new THREE.Vector3());worldPosition.y+=deltaWorldY;if(object.parent){object.parent.updateWorldMatrix(true,false);object.parent.worldToLocal(worldPosition);}object.position.copy(worldPosition);object.updateWorldMatrix(true,true);}
 
 function isVisibleInside(object:THREE.Object3D,root:THREE.Object3D){let current:THREE.Object3D|null=object;while(current){if(!current.visible)return false;if(current===root)return true;current=current.parent;}return false;}
 function measureRelative(root:THREE.Object3D,relativeTo:THREE.Object3D,componentId?:string):RuntimeMeasurement|undefined{
@@ -146,18 +150,18 @@ function worldPerPixel(camera:THREE.Camera,canvasHeight:number,point:THREE.Vecto
 function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const gltf=useGLTF(url);const camera=useThree(state=>state.camera);const canvasSize=useThree(state=>state.size);
   const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
-  const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled),labelMode=useSnapInteractionStore(state=>state.labelMode),setCandidate=useSnapInteractionStore(state=>state.setCandidate),candidateState=useSnapInteractionStore(state=>state.candidate);
+  const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled),labelMode=useSnapInteractionStore(state=>state.labelMode),setCandidate=useSnapInteractionStore(state=>state.setCandidate),candidateState=useSnapInteractionStore(state=>state.candidate),setGroundBarrier=useSnapInteractionStore(state=>state.setGroundBarrier);
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
   const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;const manifestAtLoad=useRef(manifest);
   const prepared=useMemo(()=>prepare(gltf.scene,associations,modelId,manifestAtLoad.current),[gltf.scene,associations,modelId]);
   const objects=useMemo(()=>componentObjectMap(prepared.scene),[prepared.scene]);
-  const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]),loadReported=useRef(false),dragRef=useRef<DragSnapshot|null>(null),snapCandidateRef=useRef<ActiveSnapCandidate|null>(null);
+  const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]),loadReported=useRef(false),dragRef=useRef<DragSnapshot|null>(null),snapCandidateRef=useRef<ActiveSnapCandidate|null>(null),groundDragRef=useRef<GroundDragState|null>(null);
   const publishMeasurements=useCallback(()=>{const root=groupRef.current;if(!root)return;const modelMeasurement=measureRelative(root,root);const selectedMeasurement=selected?measureRelative(root,root,selected):undefined;useMeasurementStore.getState().setMeasurements(modelMeasurement,selectedMeasurement&&selected?{...selectedMeasurement,componentId:selected}:undefined);},[selected]);
 
   useEffect(()=>setPreparedAsset(prepared.manifest,prepared.configuration),[prepared,setPreparedAsset]);
   useEffect(()=>{if(loadReported.current||loadStartedAt<=0)return;loadReported.current=true;void reportViewerLoad(performance.now()-loadStartedAt);},[loadStartedAt]);
   useEffect(()=>{retainOwnedObject3D(prepared.scene);return()=>releaseOwnedObject3D(prepared.scene);},[prepared.scene]);
-  useEffect(()=>{setCandidate(undefined);snapCandidateRef.current=null;},[selected,setCandidate]);
+  useEffect(()=>{setCandidate(undefined);setGroundBarrier(undefined);snapCandidateRef.current=null;groundDragRef.current=null;},[selected,setCandidate,setGroundBarrier]);
   useEffect(()=>{
     if(!configuration||!manifest)return;
     prepared.scene.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;if(!id)return;const state=configuration.components[id];if(!state)return;const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);object.visible=state.visible&&!state.deleted&&!state.variantId;const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];for(const[index,material]of materials.entries()){if(!(material instanceof THREE.MeshStandardMaterial))continue;const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);}});
@@ -183,6 +187,21 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     setCandidate({sourceComponentId:selectedDefinition.id,sourceAnchorId:candidate.sourceAnchor.id,sourceAnchorName:candidate.sourceAnchor.name??candidate.sourceAnchor.id,targetComponentId:candidate.targetComponentId,targetComponentName:candidate.targetComponentName,targetAnchorId:candidate.targetAnchor.id,targetAnchorName:candidate.targetAnchor.name??candidate.targetAnchor.id,gapMm:candidate.distanceWorld*1000,compatible:candidate.compatible,ready});
   },[snapEnabled,componentMode,manifest,configuration,selectedDefinition,selectionTarget,objects,camera,canvasSize.height,setCandidate]);
 
+  const updateGroundBarrier=useCallback(()=>{
+    const drag=groundDragRef.current;
+    if(componentMode!=='translate'||!drag||!selectionTarget||!selectedDefinition){setGroundBarrier(undefined);return;}
+    selectionTarget.updateWorldMatrix(true,true);
+    const box=new THREE.Box3().setFromObject(selectionTarget);
+    if(box.isEmpty()){setGroundBarrier(undefined);return;}
+    const result=resolveGroundBarrier(box.min.y,drag.breakDistanceWorld,drag.released);
+    drag.released=result.released;
+    if(result.correctionY>0)moveObjectWorldY(selectionTarget,result.correctionY);
+    if(result.phase==='clear'){setGroundBarrier(undefined);return;}
+    setGroundBarrier({phase:result.phase,componentId:selectedDefinition.id,componentName:selectedDefinition.name,penetrationMm:result.penetration*1000,thresholdMm:drag.breakDistanceWorld*1000,progress:result.progress});
+  },[componentMode,selectionTarget,selectedDefinition,setGroundBarrier]);
+
+  const updateComponentDrag=useCallback(()=>{updateGroundBarrier();updateSnapCandidate();},[updateGroundBarrier,updateSnapCandidate]);
+
   const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
   const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={labelMode==='selected'}/>;
   const componentLabels=<ComponentLabels objects={objects} manifest={manifest} configuration={configuration} mode={labelMode} selected={selected}/>;
@@ -197,8 +216,16 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     showX={componentMode!=='scale'||selectedDefinition.editableAxes.x}
     showY={componentMode!=='scale'||selectedDefinition.editableAxes.y}
     showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z}
-    onMouseDown={()=>{setCandidate(undefined);snapCandidateRef.current=null;dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};}}
-    onObjectChange={updateSnapCandidate}
+    onMouseDown={()=>{
+      setCandidate(undefined);setGroundBarrier(undefined);snapCandidateRef.current=null;
+      dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};
+      if(componentMode==='translate'){
+        selectionTarget.updateWorldMatrix(true,true);
+        const box=new THREE.Box3().setFromObject(selectionTarget);const center=box.isEmpty()?selectionTarget.getWorldPosition(new THREE.Vector3()):box.getCenter(new THREE.Vector3());
+        groundDragRef.current={released:!box.isEmpty()&&box.min.y<0,breakDistanceWorld:Math.max(worldPerPixel(camera,canvasSize.height,center)*GROUND_BREAK_PIXELS,1e-5)};
+      }else groundDragRef.current=null;
+    }}
+    onObjectChange={updateComponentDrag}
     onMouseUp={()=>{
       const start=dragRef.current;if(!start)return;
       let finalPosition=selectionTarget.position.clone(),finalRotation=selectionTarget.rotation.clone();const finalScale=selectionTarget.scale.clone();const snap=snapCandidateRef.current;
@@ -214,17 +241,17 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
       }else if(selectedDefinition.scalingMode==='AXIS_SCALE'){
         const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!selectedDefinition.editableAxes[axis])return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});
       }
-      dragRef.current=null;snapCandidateRef.current=null;setCandidate(undefined);if(actions.length)dispatchBatch(actions,snap?.ready?`Snap ${selectedDefinition.name} to ${snap.targetComponentName}`:`Direct ${componentMode} ${selectedDefinition.name}`);
+      dragRef.current=null;groundDragRef.current=null;snapCandidateRef.current=null;setCandidate(undefined);setGroundBarrier(undefined);if(actions.length)dispatchBatch(actions,snap?.ready?`Snap ${selectedDefinition.name} to ${snap.targetComponentName}`:`Direct ${componentMode} ${selectedDefinition.name}`);
     }}
   />:null;
   return <>{model}{componentControls}{indicator}{componentLabels}{proximity}{anchorMarkers}{orbitTarget}</>;
 }
 
-function NavigationAids(){return <><Grid infiniteGrid args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
+function NavigationAids(){return <><Grid infiniteGrid followCamera args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} fadeFrom={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
 
 export default function ModelViewport(){
   const assetUrl=useEditorStore(state=>state.assetUrl),resetSnap=useSnapInteractionStore(state=>state.reset);
   const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);
   useEffect(()=>{useMeasurementStore.getState().reset();resetSnap();},[assetUrl,resetSnap]);
-  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:100000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={100000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
+  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={250000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
 }

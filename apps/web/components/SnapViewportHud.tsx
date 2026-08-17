@@ -81,8 +81,14 @@ function SnapStatus(){
   const target=attachment?store.manifest?.components.find(item=>item.id===attachment.targetComponentId):undefined;
   const sourceAnchor=attachment?(store.manifest?.anchors??[]).find(item=>item.id===attachment.sourceAnchorId):undefined;
   const targetAnchor=attachment?(store.manifest?.anchors??[]).find(item=>item.id===attachment.targetAnchorId):undefined;
-  if(!snap.candidate&&!attachment)return null;
+  if(!snap.candidate&&!attachment&&!snap.groundBarrier)return null;
   return <div className="snap-status-card" data-testid="snap-status-hud">
+    {snap.groundBarrier&&<div className={`ground-barrier-status ${snap.groundBarrier.phase}`} data-testid="ground-barrier-status">
+      <div className="snap-status-title">{snap.groundBarrier.phase==='resisting'?'Ground barrier · Y = 0':'Ground barrier released'}</div>
+      {snap.groundBarrier.phase==='resisting'
+        ?<><div>{snap.groundBarrier.componentName} đang chạm mặt lưới. Tiếp tục kéo xuống để cố ý xuyên qua.</div><div className="ground-barrier-meter"><span style={{width:`${Math.round(snap.groundBarrier.progress*100)}%`}}/></div><small>{Math.round(snap.groundBarrier.penetrationMm)} / {Math.round(snap.groundBarrier.thresholdMm)} mm lực kéo xuyên</small></>
+        :<div>{snap.groundBarrier.componentName} đã vượt ngưỡng — cho phép đi xuống dưới mặt lưới.</div>}
+    </div>}
     {snap.candidate&&<div className={snap.candidate.ready?'snap-ready':'snap-nearest'}>
       <div className="snap-status-title">{snap.candidate.ready?'Ready to snap':'Nearest part'} · {snap.candidate.targetComponentName}</div>
       <div>{snap.candidate.sourceAnchorName} → {snap.candidate.targetAnchorName} · <b>{Math.round(snap.candidate.gapMm)} mm</b></div>

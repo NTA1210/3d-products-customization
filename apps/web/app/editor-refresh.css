@@ -133,6 +133,12 @@ body[data-component-labels='off'] [data-testid='selection-indicator']{display:no
 .snap-nearest>span{display:block;margin-top:3px;color:#f2cf8b}
 .attachment-status{padding:6px;border-radius:7px;background:rgba(45,89,126,.22);border:1px solid rgba(92,151,203,.28)}
 .attachment-status button{margin-top:6px;padding:4px 7px;font-size:10px}
+.ground-barrier-status{margin-bottom:6px;padding:7px;border-radius:8px}
+.ground-barrier-status.resisting{background:rgba(172,111,35,.2);border:1px solid rgba(240,197,109,.42)}
+.ground-barrier-status.released{background:rgba(124,65,46,.22);border:1px solid rgba(237,141,105,.4)}
+.ground-barrier-status small{display:block;margin-top:4px;color:#b9c7d5}
+.ground-barrier-meter{height:4px;margin-top:6px;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.08)}
+.ground-barrier-meter>span{display:block;height:100%;border-radius:inherit;background:var(--editor-warning);transition:width .05s linear}
 
 .shortcut-backdrop{
   position:fixed;
