@@ -22,6 +22,7 @@ Không nên đọc repo bằng cách mở từng file ngẫu nhiên. Hãy đi th
 | Thêm feature mới đúng kiến trúc | [11 - Hướng dẫn mở rộng](guides/11_EXTENSION_GUIDE.md) |
 | Gắn part, semantic anchor, Snap/Attach | [12 - Anchors, Snap và Attach](guides/12_ANCHORS_SNAP_ATTACH.md) |
 | Editor chrome, component labels và shortcut | [13 - Editor UI và Shortcuts](guides/13_EDITOR_UI_AND_SHORTCUTS.md) |
+| Workflow edit kiểu Maya/Blender/DCC | [14 - DCC Editor Workflow](guides/14_DCC_EDITOR_WORKFLOW.md) |
 
 ## Thứ tự đọc khuyến nghị cho developer mới
 
@@ -29,7 +30,7 @@ Không nên đọc repo bằng cách mở từng file ngẫu nhiên. Hãy đi th
 2. [Supabase Database](SUPABASE_DATABASE.md)
 3. [Repository và kiến trúc](guides/02_REPOSITORY_AND_ARCHITECTURE.md)
 4. Chọn nhánh làm việc:
-   - Frontend: [Web Editor](guides/03_WEB_EDITOR.md) → [Editor UI và Shortcuts](guides/13_EDITOR_UI_AND_SHORTCUTS.md)
+   - Frontend: [Web Editor](guides/03_WEB_EDITOR.md) → [Editor UI và Shortcuts](guides/13_EDITOR_UI_AND_SHORTCUTS.md) → [DCC Editor Workflow](guides/14_DCC_EDITOR_WORKFLOW.md)
    - Backend: [API Backend](guides/04_API_BACKEND.md) → [Dữ liệu, xác thực và Storage](guides/05_DATA_AUTH_STORAGE.md)
 5. [Worker và pipeline](guides/06_WORKERS_AND_PIPELINES.md)
 6. [Kiểm thử và CI](guides/08_TESTING_AND_CI.md)

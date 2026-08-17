@@ -8,6 +8,7 @@ import type {EditorAction} from '@product3d/action-engine';
 import type {AnchorDefinition,ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {useDccViewportStore} from '../lib/dcc-viewport-store';
 import {useEditorStore} from '../lib/store';
 import {useMeasurementStore,type RuntimeMeasurement} from '../lib/measurement-store';
 import {flattenComponentObjects,hasNestedComponentObjects} from '../lib/component-scene';
@@ -143,7 +144,22 @@ function ProximityIndicator({target,label,gapMm,compatible,ready}:{target?:THREE
 
 function AnchorMarkers({target,anchors,visible}:{target?:THREE.Object3D;anchors:AnchorDefinition[];visible:boolean}){const refs=useRef(new Map<string,THREE.Group>());useFrame(()=>{for(const anchor of anchors){const group=refs.current.get(anchor.id);if(!group)continue;group.visible=Boolean(visible&&target);if(visible&&target)group.position.copy(anchorWorldPosition(target,anchor));}});return <>{anchors.map(anchor=><group key={anchor.id} ref={node=>{if(node)refs.current.set(anchor.id,node);else refs.current.delete(anchor.id);}} visible={false}><Html center style={{pointerEvents:'none'}}><div title={anchor.name??anchor.id} style={{width:8,height:8,borderRadius:'50%',background:'#4cc9ff',border:'1px solid rgba(255,255,255,.9)',boxShadow:'0 0 0 2px rgba(76,201,255,.18)'}}/></Html></group>)}</>;}
 
-function SelectionOrbitTarget({target,enabled,selectionKey}:{target?:THREE.Object3D;enabled:boolean;selectionKey:string}){const camera=useThree(state=>state.camera);const controls=useThree(state=>(state as unknown as{controls?:OrbitControlsLike}).controls);useEffect(()=>{if(!enabled||!target||!controls?.target)return;target.updateWorldMatrix(true,true);const box=new THREE.Box3().setFromObject(target);if(box.isEmpty())return;const center=box.getCenter(new THREE.Vector3());const delta=center.clone().sub(controls.target);if(delta.lengthSq()<1e-12)return;camera.position.add(delta);controls.target.copy(center);controls.update();},[camera,controls,enabled,target,selectionKey]);return null;}
+function DccCameraController({selectedTarget,modelTarget,request}:{selectedTarget?:THREE.Object3D;modelTarget?:THREE.Object3D;request:{id:number;target:'selected'|'all'}}){
+  const camera=useThree(state=>state.camera);const controls=useThree(state=>(state as unknown as{controls?:OrbitControlsLike}).controls);
+  useEffect(()=>{
+    if(!request.id||!controls?.target)return;
+    const target=request.target==='selected'?selectedTarget:modelTarget;if(!target)return;
+    target.updateWorldMatrix(true,true);const box=new THREE.Box3().setFromObject(target);if(box.isEmpty())return;
+    const center=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());
+    const radius=Math.max(size.length()*.5,.02);const direction=camera.position.clone().sub(controls.target);if(direction.lengthSq()<1e-8)direction.set(1,.75,1);direction.normalize();
+    let distance=radius*2.5;
+    if(camera instanceof THREE.PerspectiveCamera){const halfFov=THREE.MathUtils.degToRad(camera.fov*.5);distance=Math.max(radius/Math.max(Math.sin(halfFov),.05)*1.25,.08);}
+    camera.position.copy(center).addScaledVector(direction,distance);controls.target.copy(center);
+    if(camera instanceof THREE.PerspectiveCamera){camera.near=Math.max(distance/10000,.001);camera.far=Math.max(distance*10000,1000000);camera.updateProjectionMatrix();}
+    controls.update();
+  },[camera,controls,modelTarget,request.id,request.target,selectedTarget]);
+  return null;
+}
 
 function worldPerPixel(camera:THREE.Camera,canvasHeight:number,point:THREE.Vector3){if(camera instanceof THREE.PerspectiveCamera){const distance=Math.max(camera.position.distanceTo(point),.001);return 2*distance*Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)/Math.max(canvasHeight,1);}if(camera instanceof THREE.OrthographicCamera)return Math.abs(camera.top-camera.bottom)/Math.max(canvasHeight,1);return .001;}
 
@@ -151,6 +167,7 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const gltf=useGLTF(url);const camera=useThree(state=>state.camera);const canvasSize=useThree(state=>state.size);
   const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
   const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled),labelMode=useSnapInteractionStore(state=>state.labelMode),setCandidate=useSnapInteractionStore(state=>state.setCandidate),candidateState=useSnapInteractionStore(state=>state.candidate),setGroundBarrier=useSnapInteractionStore(state=>state.setGroundBarrier);
+  const transformSpace=useDccViewportStore(state=>state.transformSpace),gridSnapEnabled=useDccViewportStore(state=>state.gridSnapEnabled),gridStepMm=useDccViewportStore(state=>state.gridStepMm),rotationSnapDeg=useDccViewportStore(state=>state.rotationSnapDeg),gizmoSize=useDccViewportStore(state=>state.gizmoSize),frameRequest=useDccViewportStore(state=>state.frameRequest),altNavigation=useDccViewportStore(state=>state.altNavigation);
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
   const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;const manifestAtLoad=useRef(manifest);
   const prepared=useMemo(()=>prepare(gltf.scene,associations,modelId,manifestAtLoad.current),[gltf.scene,associations,modelId]);
@@ -175,6 +192,8 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const selectedDefinition=manifest?.components.find(item=>item.id===selected),selectedState=selected?configuration?.components[selected]:undefined,selectionVisible=Boolean(selectedState?.visible&&!selectedState.deleted);
   const selectedAnchors=(manifest?.anchors??[]).filter(anchor=>anchor.componentId===selected&&anchor.snapEnabled);
   const candidateTarget=candidateState?findComponentObject(prepared.scene,candidateState.targetComponentId):undefined;
+  const translationSnap=gridSnapEnabled?Math.max(gridStepMm/1000,1e-9):undefined;
+  const rotationSnap=gridSnapEnabled?THREE.MathUtils.degToRad(rotationSnapDeg):undefined;
 
   const updateSnapCandidate=useCallback(()=>{
     if(!snapEnabled||componentMode!=='translate'||!manifest||!configuration||!selectedDefinition||!selectionTarget){snapCandidateRef.current=null;setCandidate(undefined);return;}
@@ -202,17 +221,21 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
 
   const updateComponentDrag=useCallback(()=>{updateGroundBarrier();updateSnapCandidate();},[updateGroundBarrier,updateSnapCandidate]);
 
-  const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
+  const model=<group ref={groupRef} onPointerDown={event=>{if(altNavigation)return;event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
   const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={labelMode==='selected'}/>;
   const componentLabels=<ComponentLabels objects={objects} manifest={manifest} configuration={configuration} mode={labelMode} selected={selected}/>;
   const proximity=candidateState?<ProximityIndicator target={candidateTarget} label={candidateState.targetComponentName} gapMm={candidateState.gapMm} compatible={candidateState.compatible} ready={candidateState.ready}/>:null;
   const anchorMarkers=<AnchorMarkers target={selectionTarget} anchors={selectedAnchors} visible={Boolean(snapEnabled&&phase==='EDITOR'&&configuration?.placement.locked&&componentMode==='translate'&&selectionVisible)}/>;
-  const orbitTarget=<SelectionOrbitTarget target={selectionTarget} enabled={Boolean(phase==='EDITOR'&&configuration?.placement.locked&&selectionVisible)} selectionKey={selected??''}/>;
-  if(phase==='EDITOR'&&!configuration?.placement.locked)return <><TransformControls mode={placementMode} onObjectChange={()=>{const object=groupRef.current;if(!object)return;setPlacementTransform({position:object.position.toArray() as[number,number,number],rotation:[object.rotation.x,object.rotation.y,object.rotation.z],scale:object.scale.toArray() as[number,number,number]});}}>{model}</TransformControls>{indicator}{componentLabels}</>;
+  const cameraController=<DccCameraController selectedTarget={selectionTarget} modelTarget={groupRef.current??undefined} request={frameRequest}/>;
+  if(phase==='EDITOR'&&!configuration?.placement.locked)return <><TransformControls mode={placementMode} space={transformSpace} size={gizmoSize} translationSnap={translationSnap} rotationSnap={rotationSnap} onObjectChange={()=>{const object=groupRef.current;if(!object)return;setPlacementTransform({position:object.position.toArray() as[number,number,number],rotation:[object.rotation.x,object.rotation.y,object.rotation.z],scale:object.scale.toArray() as[number,number,number]});}}>{model}</TransformControls>{indicator}{componentLabels}{cameraController}</>;
 
   const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls
     object={selectionTarget}
     mode={componentMode}
+    space={transformSpace}
+    size={gizmoSize}
+    translationSnap={translationSnap}
+    rotationSnap={rotationSnap}
     showX={componentMode!=='scale'||selectedDefinition.editableAxes.x}
     showY={componentMode!=='scale'||selectedDefinition.editableAxes.y}
     showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z}
@@ -244,14 +267,34 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
       dragRef.current=null;groundDragRef.current=null;snapCandidateRef.current=null;setCandidate(undefined);setGroundBarrier(undefined);if(actions.length)dispatchBatch(actions,snap?.ready?`Snap ${selectedDefinition.name} to ${snap.targetComponentName}`:`Direct ${componentMode} ${selectedDefinition.name}`);
     }}
   />:null;
-  return <>{model}{componentControls}{indicator}{componentLabels}{proximity}{anchorMarkers}{orbitTarget}</>;
+  return <>{model}{componentControls}{indicator}{componentLabels}{proximity}{anchorMarkers}{cameraController}</>;
 }
 
 function NavigationAids(){return <><Grid infiniteGrid followCamera args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} fadeFrom={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
+
+function DccOrbitControls(){
+  const altNavigation=useDccViewportStore(state=>state.altNavigation);
+  const disabled=-1;
+  const mouseButtons=altNavigation
+    ?{LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.DOLLY}
+    :{LEFT:disabled,MIDDLE:disabled,RIGHT:disabled};
+  return <OrbitControls
+    makeDefault
+    enableDamping
+    dampingFactor={.08}
+    screenSpacePanning
+    minDistance={.02}
+    maxDistance={250000}
+    enableRotate={altNavigation}
+    enablePan={altNavigation}
+    enableZoom
+    mouseButtons={mouseButtons as never}
+  />;
+}
 
 export default function ModelViewport(){
   const assetUrl=useEditorStore(state=>state.assetUrl),resetSnap=useSnapInteractionStore(state=>state.reset);
   const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);
   useEffect(()=>{useMeasurementStore.getState().reset();resetSnap();},[assetUrl,resetSnap]);
-  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={250000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
+  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onContextMenu={event=>event.preventDefault()} onPointerMissed={()=>{if(!useDccViewportStore.getState().altNavigation)useEditorStore.getState().select(undefined);}}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><DccOrbitControls/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
 }

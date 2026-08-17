@@ -1,3 +1,4 @@
+import DccTransformHud from '../components/DccTransformHud';
 import EditorShell from '../components/EditorShell';
 import KeyboardShortcuts from '../components/KeyboardShortcuts';
 import LabelVisibilityBridge from '../components/LabelVisibilityBridge';
@@ -8,6 +9,7 @@ export default function Home(){
   return <>
     <EditorShell/>
     <WorkspaceToolbar/>
+    <DccTransformHud/>
     <SnapViewportHud/>
     <KeyboardShortcuts/>
     <LabelVisibilityBridge/>

@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {
   DEFAULT_SHORTCUT_BINDINGS,
+  SHORTCUT_PRESETS,
   normalizeShortcutBinding,
   shortcutConflicts,
   shortcutFromEvent,
@@ -26,5 +27,27 @@ describe('keyboard shortcut model',()=>{
   it('detects collisions before a binding is reassigned',()=>{
     expect(shortcutConflicts(DEFAULT_SHORTCUT_BINDINGS,'toggleSnap','L')).toBe('toggleLabels');
     expect(shortcutConflicts(DEFAULT_SHORTCUT_BINDINGS,'toggleSnap','Alt+S')).toBeUndefined();
+  });
+
+  it('ships a Maya-style standard DCC keymap with explicit framing and grid snap',()=>{
+    expect(SHORTCUT_PRESETS.maya.move).toBe('W');
+    expect(SHORTCUT_PRESETS.maya.rotate).toBe('E');
+    expect(SHORTCUT_PRESETS.maya.scale).toBe('R');
+    expect(SHORTCUT_PRESETS.maya.focusSelected).toBe('F');
+    expect(SHORTCUT_PRESETS.maya.frameAll).toBe('Home');
+    expect(SHORTCUT_PRESETS.maya.toggleGridSnap).toBe('X');
+  });
+
+  it('offers a Blender-style transform preset without colliding scale and anchor snap',()=>{
+    expect(SHORTCUT_PRESETS.blender.move).toBe('G');
+    expect(SHORTCUT_PRESETS.blender.rotate).toBe('R');
+    expect(SHORTCUT_PRESETS.blender.scale).toBe('S');
+    expect(SHORTCUT_PRESETS.blender.toggleSnap).toBe('Shift+Tab');
+    expect(shortcutConflicts(SHORTCUT_PRESETS.blender,'scale',SHORTCUT_PRESETS.blender.scale)).toBeUndefined();
+  });
+
+  it('matches non-character framing keys',()=>{
+    const home={key:'Home',ctrlKey:false,metaKey:false,altKey:false,shiftKey:false};
+    expect(shortcutMatches(home,'Home')).toBe(true);
   });
 });
