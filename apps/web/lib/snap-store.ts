@@ -3,6 +3,7 @@
 import {create} from 'zustand';
 
 export type LabelMode='selected'|'all'|'off';
+export type GroundBarrierPhase='resisting'|'released';
 
 export type SnapCandidateState={
   sourceComponentId:string;
@@ -17,15 +18,26 @@ export type SnapCandidateState={
   ready:boolean;
 };
 
+export type GroundBarrierState={
+  phase:GroundBarrierPhase;
+  componentId:string;
+  componentName:string;
+  penetrationMm:number;
+  thresholdMm:number;
+  progress:number;
+};
+
 type SnapInteractionStore={
   snapEnabled:boolean;
   labelMode:LabelMode;
   lastVisibleLabelMode:Exclude<LabelMode,'off'>;
   candidate?:SnapCandidateState;
+  groundBarrier?:GroundBarrierState;
   toggleSnap:()=>void;
   toggleLabels:()=>void;
   setLabelMode:(mode:LabelMode)=>void;
   setCandidate:(candidate?:SnapCandidateState)=>void;
+  setGroundBarrier:(groundBarrier?:GroundBarrierState)=>void;
   reset:()=>void;
 };
 
@@ -34,6 +46,7 @@ export const useSnapInteractionStore=create<SnapInteractionStore>((set)=>({
   labelMode:'selected',
   lastVisibleLabelMode:'selected',
   candidate:undefined,
+  groundBarrier:undefined,
   toggleSnap:()=>set(state=>({snapEnabled:!state.snapEnabled,candidate:undefined})),
   toggleLabels:()=>set(state=>state.labelMode==='off'
     ?{labelMode:state.lastVisibleLabelMode}
@@ -42,5 +55,6 @@ export const useSnapInteractionStore=create<SnapInteractionStore>((set)=>({
     ?{labelMode:'off'}
     :{labelMode:mode,lastVisibleLabelMode:mode}),
   setCandidate:candidate=>set({candidate}),
-  reset:()=>set({candidate:undefined}),
+  setGroundBarrier:groundBarrier=>set({groundBarrier}),
+  reset:()=>set({candidate:undefined,groundBarrier:undefined}),
 }));
