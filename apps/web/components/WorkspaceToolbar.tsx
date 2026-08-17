@@ -1,0 +1,87 @@
+'use client';
+
+import {useEffect,useState} from 'react';
+import {shortcutDisplay} from '../lib/keyboard-shortcuts';
+import {useShortcutStore} from '../lib/shortcut-store';
+import {useEditorStore} from '../lib/store';
+import {useSnapInteractionStore,type LabelMode} from '../lib/snap-store';
+
+export default function WorkspaceToolbar(){
+  const phase=useEditorStore(state=>state.phase);
+  const selected=useEditorStore(state=>state.selected);
+  const manifest=useEditorStore(state=>state.manifest);
+  const configuration=useEditorStore(state=>state.configuration);
+  const placementMode=useEditorStore(state=>state.placementMode);
+  const componentMode=useEditorStore(state=>state.componentMode);
+  const undoStack=useEditorStore(state=>state.undoStack);
+  const redoStack=useEditorStore(state=>state.redoStack);
+  const undo=useEditorStore(state=>state.undo);
+  const redo=useEditorStore(state=>state.redo);
+  const setPlacementMode=useEditorStore(state=>state.setPlacementMode);
+  const setComponentMode=useEditorStore(state=>state.setComponentMode);
+  const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled);
+  const toggleSnap=useSnapInteractionStore(state=>state.toggleSnap);
+  const labelMode=useSnapInteractionStore(state=>state.labelMode);
+  const setLabelMode=useSnapInteractionStore(state=>state.setLabelMode);
+  const bindings=useShortcutStore(state=>state.bindings);
+  const openSettings=useShortcutStore(state=>state.openSettings);
+  const[apple,setApple]=useState(false);
+  useEffect(()=>setApple(/Mac|iPhone|iPad|iPod/.test(navigator.platform)),[]);
+
+  if(phase==='EMPTY')return null;
+
+  const locked=Boolean(configuration?.placement.locked);
+  const definition=manifest?.components.find(item=>item.id===selected);
+  const canScale=Boolean(locked&&definition?.editable&&definition.scalingMode==='AXIS_SCALE'&&Object.values(definition.editableAxes).some(Boolean));
+  const activeMode=locked?componentMode:placementMode;
+  const setMode=(mode:'translate'|'rotate'|'scale')=>{
+    if(!locked){if(mode!=='scale')setPlacementMode(mode);return;}
+    setComponentMode(mode);
+  };
+  const key=(action:keyof typeof bindings)=>shortcutDisplay(bindings[action],apple);
+
+  return <div className="viewport-toolbar" data-testid="viewport-toolbar">
+    <div className="toolbar-group history-tools">
+      <button type="button" className="tool-button" aria-label="Undo" title={`Undo · ${key('undo')}`} disabled={!undoStack.length} onClick={undo}>
+        <span className="tool-icon">↶</span><span>Undo</span><kbd>{key('undo')}</kbd>
+      </button>
+      <button type="button" className="tool-button" aria-label="Redo" title={`Redo · ${key('redo')}`} disabled={!redoStack.length} onClick={redo}>
+        <span className="tool-icon">↷</span><span>Redo</span><kbd>{key('redo')}</kbd>
+      </button>
+    </div>
+
+    {phase==='EDITOR'&&<>
+      <span className="toolbar-divider"/>
+      <div className="toolbar-group transform-tools" aria-label="Transform tools">
+        <button type="button" aria-label="Transform position" className={`tool-button compact ${activeMode==='translate'?'active':''}`} title={`Move · ${key('move')}`} onClick={()=>setMode('translate')}>
+          <span className="tool-icon">↔</span><span>Move</span><kbd>{key('move')}</kbd>
+        </button>
+        <button type="button" aria-label="Transform orientation" className={`tool-button compact ${activeMode==='rotate'?'active':''}`} title={`Rotate · ${key('rotate')}`} onClick={()=>setMode('rotate')}>
+          <span className="tool-icon">⟳</span><span>Rotate</span><kbd>{key('rotate')}</kbd>
+        </button>
+        <button type="button" aria-label="Transform size" className={`tool-button compact ${activeMode==='scale'?'active':''}`} disabled={!canScale} title={`Resize · ${key('scale')}`} onClick={()=>setMode('scale')}>
+          <span className="tool-icon">⤢</span><span>Scale</span><kbd>{key('scale')}</kbd>
+        </button>
+      </div>
+      <span className="toolbar-divider"/>
+      <button type="button" className={`tool-button compact ${snapEnabled?'active':''}`} aria-pressed={snapEnabled} onClick={toggleSnap} title={`Magnetic Snap · ${key('toggleSnap')}`}>
+        <span className="tool-icon">⌁</span><span>Snap</span><kbd>{key('toggleSnap')}</kbd>
+      </button>
+    </>}
+
+    <span className="toolbar-divider"/>
+    <label className="toolbar-select" title={`Component labels · ${key('toggleLabels')}`}>
+      <span>Labels</span>
+      <select aria-label="Component label display" value={labelMode} onChange={event=>setLabelMode(event.target.value as LabelMode)}>
+        <option value="selected">Selected</option>
+        <option value="all">All</option>
+        <option value="off">Off</option>
+      </select>
+      <kbd>{key('toggleLabels')}</kbd>
+    </label>
+
+    <button type="button" className="tool-button compact settings-tool" aria-label="Keyboard shortcut settings" onClick={openSettings} title="Keyboard shortcuts">
+      <span className="tool-icon">⌨</span><span>Shortcuts</span>
+    </button>
+  </div>;
+}
