@@ -167,7 +167,7 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const gltf=useGLTF(url);const camera=useThree(state=>state.camera);const canvasSize=useThree(state=>state.size);
   const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
   const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled),labelMode=useSnapInteractionStore(state=>state.labelMode),setCandidate=useSnapInteractionStore(state=>state.setCandidate),candidateState=useSnapInteractionStore(state=>state.candidate),setGroundBarrier=useSnapInteractionStore(state=>state.setGroundBarrier);
-  const transformSpace=useDccViewportStore(state=>state.transformSpace),gridSnapEnabled=useDccViewportStore(state=>state.gridSnapEnabled),gridStepMm=useDccViewportStore(state=>state.gridStepMm),rotationSnapDeg=useDccViewportStore(state=>state.rotationSnapDeg),gizmoSize=useDccViewportStore(state=>state.gizmoSize),frameRequest=useDccViewportStore(state=>state.frameRequest);
+  const transformSpace=useDccViewportStore(state=>state.transformSpace),gridSnapEnabled=useDccViewportStore(state=>state.gridSnapEnabled),gridStepMm=useDccViewportStore(state=>state.gridStepMm),rotationSnapDeg=useDccViewportStore(state=>state.rotationSnapDeg),gizmoSize=useDccViewportStore(state=>state.gizmoSize),frameRequest=useDccViewportStore(state=>state.frameRequest),altNavigation=useDccViewportStore(state=>state.altNavigation);
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
   const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;const manifestAtLoad=useRef(manifest);
   const prepared=useMemo(()=>prepare(gltf.scene,associations,modelId,manifestAtLoad.current),[gltf.scene,associations,modelId]);
@@ -221,7 +221,7 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
 
   const updateComponentDrag=useCallback(()=>{updateGroundBarrier();updateSnapCandidate();},[updateGroundBarrier,updateSnapCandidate]);
 
-  const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
+  const model=<group ref={groupRef} onPointerDown={event=>{if(altNavigation)return;event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
   const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={labelMode==='selected'}/>;
   const componentLabels=<ComponentLabels objects={objects} manifest={manifest} configuration={configuration} mode={labelMode} selected={selected}/>;
   const proximity=candidateState?<ProximityIndicator target={candidateTarget} label={candidateState.targetComponentName} gapMm={candidateState.gapMm} compatible={candidateState.compatible} ready={candidateState.ready}/>:null;
@@ -272,9 +272,29 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
 
 function NavigationAids(){return <><Grid infiniteGrid followCamera args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} fadeFrom={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
 
+function DccOrbitControls(){
+  const altNavigation=useDccViewportStore(state=>state.altNavigation);
+  const disabled=-1;
+  const mouseButtons=altNavigation
+    ?{LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.DOLLY}
+    :{LEFT:disabled,MIDDLE:disabled,RIGHT:disabled};
+  return <OrbitControls
+    makeDefault
+    enableDamping
+    dampingFactor={.08}
+    screenSpacePanning
+    minDistance={.02}
+    maxDistance={250000}
+    enableRotate={altNavigation}
+    enablePan={altNavigation}
+    enableZoom
+    mouseButtons={mouseButtons as never}
+  />;
+}
+
 export default function ModelViewport(){
   const assetUrl=useEditorStore(state=>state.assetUrl),resetSnap=useSnapInteractionStore(state=>state.reset);
   const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);
   useEffect(()=>{useMeasurementStore.getState().reset();resetSnap();},[assetUrl,resetSnap]);
-  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={250000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
+  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onContextMenu={event=>event.preventDefault()} onPointerMissed={()=>{if(!useDccViewportStore.getState().altNavigation)useEditorStore.getState().select(undefined);}}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><DccOrbitControls/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
 }
