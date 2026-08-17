@@ -82,6 +82,7 @@ test('component labels and keyboard shortcuts are user configurable',async({page
   const material=page.locator('label:has-text("Material") + select');
   await material.selectOption('mat_oak_light');
   await expect(material).toHaveValue('mat_oak_light');
+  await material.blur();
   await page.keyboard.press('Control+Z');
   await expect(material).toHaveValue('');
   await page.keyboard.press('Control+Shift+Z');
