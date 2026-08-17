@@ -1,11 +1,11 @@
 'use client';
 
-import {Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {Suspense,useCallback,useEffect,useMemo,useRef} from 'react';
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import {Bounds,GizmoHelper,GizmoViewport,Grid,Html,OrbitControls,TransformControls,useGLTF} from '@react-three/drei';
 import {analyzeTriangleTopology,type TriangleRegion} from '@product3d/geometry-topology';
 import type {EditorAction} from '@product3d/action-engine';
-import type {ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
+import type {AnchorDefinition,ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {useEditorStore} from '../lib/store';
@@ -13,15 +13,26 @@ import {useMeasurementStore,type RuntimeMeasurement} from '../lib/measurement-st
 import {flattenComponentObjects,hasNestedComponentObjects} from '../lib/component-scene';
 import {demoMaterials} from '../lib/materials';
 import {isEditableKeyboardTarget} from '../lib/keyboard-shortcuts';
+import {useSnapInteractionStore} from '../lib/snap-store';
+import {
+  anchorWorldPosition,
+  autoAnchorsForMesh,
+  findNearestAnchorCandidate,
+  snappedLocalTransform,
+  type RuntimeSnapCandidate,
+} from '../lib/anchor-runtime';
 import {reportViewerLoad} from '../lib/metrics';
 
 const MAX_REGION_COMPONENTS=32;
 const MAX_MODEL_COMPONENTS=96;
+const SNAP_PIXELS=18;
+const NEAREST_INDICATOR_PIXELS=96;
 type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
 type GltfAssociation={nodes?:number;meshes?:number;primitives?:number};
 type PreparedPart={mesh:THREE.Mesh;id:string;nodeId:string;meshId:string;name:string;sourceRegionIds?:string[]};
 type DragSnapshot={position:THREE.Vector3;rotation:THREE.Euler;scale:THREE.Vector3;state:ModelConfiguration['components'][string]};
 type OrbitControlsLike={target:THREE.Vector3;update:()=>void};
+type ActiveSnapCandidate=RuntimeSnapCandidate&{ready:boolean};
 const variantCache=new Map<string,Promise<THREE.Object3D>>();
 const pendingDisposals=new WeakMap<THREE.Object3D,symbol>();
 
@@ -92,130 +103,126 @@ function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssoci
   if(hasNestedComponentObjects(runtimeComponents))throw new Error('EDITOR_COMPONENT_HIERARCHY_NOT_FLAT');
 
   for(const part of parts)initializePart(part);clone.updateMatrixWorld(true);
-  const components:ModelManifest['components']=[],configs:ModelConfiguration['components']={};
-  for(const part of parts){const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:[],materialSlotIds:[]});configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:freshTransform(),visible:true,deleted:false};}
-  return{scene:clone,manifest:{modelId,version:1,unit:'mm',axisMapping:{width:'x',height:'y',depth:'z'},components,dependencies:[]} satisfies ModelManifest,configuration:{modelId,manifestVersion:1,placement:{locked:false,transform:freshTransform()},components:configs} satisfies ModelConfiguration};
+  const components:ModelManifest['components']=[],configs:ModelConfiguration['components']={},anchors:AnchorDefinition[]=[];
+  for(const part of parts){
+    const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);
+    const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};
+    const partAnchors=autoAnchorsForMesh(part.id,part.mesh);anchors.push(...partAnchors);
+    components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:partAnchors.map(anchor=>anchor.id),materialSlotIds:[]});
+    configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:freshTransform(),visible:true,deleted:false};
+  }
+  return{
+    scene:clone,
+    manifest:{modelId,version:1,unit:'mm',axisMapping:{width:'x',height:'y',depth:'z'},components,dependencies:[],anchors} satisfies ModelManifest,
+    configuration:{modelId,manifestVersion:1,placement:{locked:false,transform:freshTransform()},components:configs,attachments:[]} satisfies ModelConfiguration,
+  };
 }
 
 async function variantScene(url:string){let cached=variantCache.get(url);if(!cached){cached=new GLTFLoader().loadAsync(url).then(gltf=>gltf.scene);variantCache.set(url,cached);}return cloneOwnedScene(await cached);}
 function highlight(root:THREE.Object3D,selected?:string){root.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;for(const material of Array.isArray(object.material)?object.material:[object.material])if(material instanceof THREE.MeshStandardMaterial){material.emissive.set(id===selected?'#1e4f85':'#000000');material.emissiveIntensity=id===selected?.35:0;}});}
 function findComponentObject(root:THREE.Object3D,componentId?:string){if(!componentId)return undefined;let match:THREE.Mesh|undefined;root.traverse(object=>{if(!match&&object instanceof THREE.Mesh&&object.userData.__componentId===componentId)match=object;});return match;}
+function componentObjectMap(root:THREE.Object3D){const result=new Map<string,THREE.Object3D>();root.traverse(object=>{const id=object.userData.__componentId as string|undefined;if(id&&!result.has(id))result.set(id,object);});return result;}
 function normalizeAngle(value:number){while(value>Math.PI)value-=Math.PI*2;while(value<-Math.PI)value+=Math.PI*2;return value;}
 
 function isVisibleInside(object:THREE.Object3D,root:THREE.Object3D){let current:THREE.Object3D|null=object;while(current){if(!current.visible)return false;if(current===root)return true;current=current.parent;}return false;}
 function measureRelative(root:THREE.Object3D,relativeTo:THREE.Object3D,componentId?:string):RuntimeMeasurement|undefined{
-  relativeTo.updateWorldMatrix(true,true);
-  const inverse=relativeTo.matrixWorld.clone().invert();
-  const bounds=new THREE.Box3();
-  let found=false;
-  root.traverse(object=>{
-    if(!(object instanceof THREE.Mesh))return;
-    if(componentId&&object.userData.__componentId!==componentId)return;
-    if(!isVisibleInside(object,root))return;
-    if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();
-    const sourceBox=object.geometry.boundingBox;
-    if(!sourceBox||sourceBox.isEmpty())return;
-    object.updateWorldMatrix(true,false);
-    const matrix=new THREE.Matrix4().multiplyMatrices(inverse,object.matrixWorld);
-    const next=sourceBox.clone().applyMatrix4(matrix);
-    if(!found){bounds.copy(next);found=true;}else bounds.union(next);
-  });
-  if(!found||bounds.isEmpty())return undefined;
-  const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());
-  const toMm=(value:number)=>value*1000;
-  return{
-    widthMm:toMm(size.x),heightMm:toMm(size.y),depthMm:toMm(size.z),
-    minMm:[toMm(bounds.min.x),toMm(bounds.min.y),toMm(bounds.min.z)],
-    maxMm:[toMm(bounds.max.x),toMm(bounds.max.y),toMm(bounds.max.z)],
-    centerMm:[toMm(center.x),toMm(center.y),toMm(center.z)],
-  };
+  relativeTo.updateWorldMatrix(true,true);const inverse=relativeTo.matrixWorld.clone().invert();const bounds=new THREE.Box3();let found=false;
+  root.traverse(object=>{if(!(object instanceof THREE.Mesh))return;if(componentId&&object.userData.__componentId!==componentId)return;if(!isVisibleInside(object,root))return;if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();const sourceBox=object.geometry.boundingBox;if(!sourceBox||sourceBox.isEmpty())return;object.updateWorldMatrix(true,false);const matrix=new THREE.Matrix4().multiplyMatrices(inverse,object.matrixWorld);const next=sourceBox.clone().applyMatrix4(matrix);if(!found){bounds.copy(next);found=true;}else bounds.union(next);});
+  if(!found||bounds.isEmpty())return undefined;const size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3());const toMm=(value:number)=>value*1000;
+  return{widthMm:toMm(size.x),heightMm:toMm(size.y),depthMm:toMm(size.z),minMm:[toMm(bounds.min.x),toMm(bounds.min.y),toMm(bounds.min.z)],maxMm:[toMm(bounds.max.x),toMm(bounds.max.y),toMm(bounds.max.z)],centerMm:[toMm(center.x),toMm(center.y),toMm(center.z)]};
 }
 
-function SelectionIndicator({target,label,visible,showLabel}:{target?:THREE.Object3D;label?:string;visible:boolean;showLabel:boolean}){const box=useMemo(()=>new THREE.Box3(),[]);const helper=useMemo(()=>{const next=new THREE.Box3Helper(box,'#4cc9ff');const material=next.material as THREE.LineBasicMaterial;material.depthTest=false;material.transparent=true;material.opacity=.95;next.renderOrder=1000;return next;},[box]);const labelRef=useRef<THREE.Group>(null),size=useMemo(()=>new THREE.Vector3(),[]),center=useMemo(()=>new THREE.Vector3(),[]);useEffect(()=>()=>{helper.geometry.dispose();(helper.material as THREE.LineBasicMaterial).dispose();},[helper]);useFrame(()=>{const show=Boolean(visible&&target);helper.visible=show;if(labelRef.current)labelRef.current.visible=show&&showLabel;if(!show||!target)return;target.updateWorldMatrix(true,true);box.setFromObject(target);if(box.isEmpty()){helper.visible=false;if(labelRef.current)labelRef.current.visible=false;return;}box.getCenter(center);box.getSize(size);const offset=Math.max(size.length()*.04,.02);if(labelRef.current)labelRef.current.position.set(center.x,box.max.y+offset,center.z);});return <><primitive object={helper}/><group ref={labelRef} visible={false}><Html center style={{pointerEvents:'none'}}><div data-testid="selection-indicator" style={{whiteSpace:'nowrap',border:'1px solid #4cc9ff',borderRadius:6,background:'rgba(7, 18, 31, 0.92)',color:'#e9f8ff',padding:'4px 8px',fontSize:11,fontWeight:700,boxShadow:'0 2px 12px rgba(0,0,0,.35)'}}>{label??'Selected component'}</div></Html></group></>;}
+function SelectionIndicator({target,label,visible,showLabel}:{target?:THREE.Object3D;label?:string;visible:boolean;showLabel:boolean}){const box=useMemo(()=>new THREE.Box3(),[]);const helper=useMemo(()=>{const next=new THREE.Box3Helper(box,'#4cc9ff');const material=next.material as THREE.LineBasicMaterial;material.depthTest=false;material.transparent=true;material.opacity=.95;next.renderOrder=1000;return next;},[box]);const labelRef=useRef<THREE.Group>(null),size=useMemo(()=>new THREE.Vector3(),[]),center=useMemo(()=>new THREE.Vector3(),[]);useEffect(()=>()=>{helper.geometry.dispose();(helper.material as THREE.LineBasicMaterial).dispose();},[helper]);useFrame(()=>{const show=Boolean(visible&&target);helper.visible=show;if(labelRef.current)labelRef.current.visible=show&&showLabel;if(!show||!target)return;target.updateWorldMatrix(true,true);box.setFromObject(target);if(box.isEmpty()){helper.visible=false;if(labelRef.current)labelRef.current.visible=false;return;}box.getCenter(center);box.getSize(size);const offset=Math.max(size.length()*.04,.02);if(labelRef.current)labelRef.current.position.set(center.x,box.max.y+offset,center.z);});return <><primitive object={helper}/><group ref={labelRef} visible={false}><Html center style={{pointerEvents:'none'}}><div data-testid="selection-indicator" style={{whiteSpace:'nowrap',border:'1px solid #4cc9ff',borderRadius:6,background:'rgba(7,18,31,.92)',color:'#e9f8ff',padding:'4px 8px',fontSize:11,fontWeight:700}}>{label??'Selected component'}</div></Html></group></>;}
 
-function SelectionOrbitTarget({target,enabled,selectionKey}:{target?:THREE.Object3D;enabled:boolean;selectionKey:string}){
-  const camera=useThree(state=>state.camera);
-  const controls=useThree(state=>(state as unknown as{controls?:OrbitControlsLike}).controls);
-  useEffect(()=>{
-    if(!enabled||!target||!controls?.target)return;
-    target.updateWorldMatrix(true,true);
-    const box=new THREE.Box3().setFromObject(target);
-    if(box.isEmpty())return;
-    const center=box.getCenter(new THREE.Vector3());
-    const delta=center.clone().sub(controls.target);
-    if(delta.lengthSq()<1e-12)return;
-    camera.position.add(delta);
-    controls.target.copy(center);
-    controls.update();
-  },[camera,controls,enabled,target,selectionKey]);
-  return null;
-}
+function ProximityIndicator({target,label,gapMm,compatible,ready}:{target?:THREE.Object3D;label?:string;gapMm:number;compatible:boolean;ready:boolean}){const box=useMemo(()=>new THREE.Box3(),[]);const helper=useMemo(()=>{const next=new THREE.Box3Helper(box,ready?'#65d98b':'#f4c66d');const material=next.material as THREE.LineBasicMaterial;material.depthTest=false;material.transparent=true;material.opacity=.95;next.renderOrder=999;return next;},[box,ready]);const labelRef=useRef<THREE.Group>(null),center=useMemo(()=>new THREE.Vector3(),[]),size=useMemo(()=>new THREE.Vector3(),[]);useEffect(()=>()=>{helper.geometry.dispose();(helper.material as THREE.LineBasicMaterial).dispose();},[helper]);useFrame(()=>{helper.visible=Boolean(target);if(labelRef.current)labelRef.current.visible=Boolean(target);if(!target)return;target.updateWorldMatrix(true,true);box.setFromObject(target);if(box.isEmpty()){helper.visible=false;if(labelRef.current)labelRef.current.visible=false;return;}box.getCenter(center);box.getSize(size);if(labelRef.current)labelRef.current.position.set(center.x,box.max.y+Math.max(size.length()*.08,.04),center.z);});return <><primitive object={helper}/><group ref={labelRef} visible={false}><Html center style={{pointerEvents:'none'}}><div data-testid="nearest-component-indicator" style={{whiteSpace:'nowrap',border:`1px solid ${ready?'#65d98b':'#f4c66d'}`,borderRadius:7,background:'rgba(10,18,28,.94)',color:'#f5f8fb',padding:'5px 8px',fontSize:11,fontWeight:700}}>{ready?'READY TO SNAP · ':compatible?'Nearest compatible · ':'Nearest part · '}{label??'Component'} · {Math.round(gapMm)} mm</div></Html></group></>;}
 
-function LoadedModel({url,loadStartedAt,showLabels}:{url:string;loadStartedAt:number;showLabels:boolean}){
-  const gltf=useGLTF(url);const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
+function AnchorMarkers({target,anchors,visible}:{target?:THREE.Object3D;anchors:AnchorDefinition[];visible:boolean}){const refs=useRef(new Map<string,THREE.Group>());useFrame(()=>{for(const anchor of anchors){const group=refs.current.get(anchor.id);if(!group)continue;group.visible=Boolean(visible&&target);if(visible&&target)group.position.copy(anchorWorldPosition(target,anchor));}});return <>{anchors.map(anchor=><group key={anchor.id} ref={node=>{if(node)refs.current.set(anchor.id,node);else refs.current.delete(anchor.id);}} visible={false}><Html center style={{pointerEvents:'none'}}><div title={anchor.name??anchor.id} style={{width:8,height:8,borderRadius:'50%',background:'#4cc9ff',border:'1px solid rgba(255,255,255,.9)',boxShadow:'0 0 0 2px rgba(76,201,255,.18)'}}/></Html></group>)}</>;}
+
+function SelectionOrbitTarget({target,enabled,selectionKey}:{target?:THREE.Object3D;enabled:boolean;selectionKey:string}){const camera=useThree(state=>state.camera);const controls=useThree(state=>(state as unknown as{controls?:OrbitControlsLike}).controls);useEffect(()=>{if(!enabled||!target||!controls?.target)return;target.updateWorldMatrix(true,true);const box=new THREE.Box3().setFromObject(target);if(box.isEmpty())return;const center=box.getCenter(new THREE.Vector3());const delta=center.clone().sub(controls.target);if(delta.lengthSq()<1e-12)return;camera.position.add(delta);controls.target.copy(center);controls.update();},[camera,controls,enabled,target,selectionKey]);return null;}
+
+function worldPerPixel(camera:THREE.Camera,canvasHeight:number,point:THREE.Vector3){if(camera instanceof THREE.PerspectiveCamera){const distance=Math.max(camera.position.distanceTo(point),.001);return 2*distance*Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)/Math.max(canvasHeight,1);}if(camera instanceof THREE.OrthographicCamera)return Math.abs(camera.top-camera.bottom)/Math.max(canvasHeight,1);return .001;}
+
+function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
+  const gltf=useGLTF(url);const camera=useThree(state=>state.camera);const canvasSize=useThree(state=>state.size);
+  const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
+  const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled),labelsVisible=useSnapInteractionStore(state=>state.labelsVisible),setCandidate=useSnapInteractionStore(state=>state.setCandidate),candidateState=useSnapInteractionStore(state=>state.candidate);
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
-  const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;
-  const manifestAtLoad=useRef(manifest);
+  const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;const manifestAtLoad=useRef(manifest);
   const prepared=useMemo(()=>prepare(gltf.scene,associations,modelId,manifestAtLoad.current),[gltf.scene,associations,modelId]);
-  const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]),loadReported=useRef(false),dragRef=useRef<DragSnapshot|null>(null);
-  const publishMeasurements=useCallback(()=>{
-    const root=groupRef.current;if(!root)return;
-    const modelMeasurement=measureRelative(root,root);
-    const selectedMeasurement=selected?measureRelative(root,root,selected):undefined;
-    useMeasurementStore.getState().setMeasurements(modelMeasurement,selectedMeasurement&&selected?{...selectedMeasurement,componentId:selected}:undefined);
-  },[selected]);
+  const groupRef=useRef<THREE.Group>(null),variantInstances=useRef<THREE.Object3D[]>([]),loadReported=useRef(false),dragRef=useRef<DragSnapshot|null>(null),snapCandidateRef=useRef<ActiveSnapCandidate|null>(null);
+  const publishMeasurements=useCallback(()=>{const root=groupRef.current;if(!root)return;const modelMeasurement=measureRelative(root,root);const selectedMeasurement=selected?measureRelative(root,root,selected):undefined;useMeasurementStore.getState().setMeasurements(modelMeasurement,selectedMeasurement&&selected?{...selectedMeasurement,componentId:selected}:undefined);},[selected]);
 
   useEffect(()=>setPreparedAsset(prepared.manifest,prepared.configuration),[prepared,setPreparedAsset]);
   useEffect(()=>{if(loadReported.current||loadStartedAt<=0)return;loadReported.current=true;void reportViewerLoad(performance.now()-loadStartedAt);},[loadStartedAt]);
   useEffect(()=>{retainOwnedObject3D(prepared.scene);return()=>releaseOwnedObject3D(prepared.scene);},[prepared.scene]);
+  useEffect(()=>{setCandidate(undefined);snapCandidateRef.current=null;},[selected,setCandidate]);
   useEffect(()=>{
     if(!configuration||!manifest)return;
-    prepared.scene.traverse(object=>{
-      if(!(object instanceof THREE.Mesh))return;
-      const id=object.userData.__componentId as string|undefined;if(!id)return;
-      const state=configuration.components[id];if(!state)return;
-      const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];
-      object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);
-      object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);
-      object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);
-      object.visible=state.visible&&!state.deleted&&!state.variantId;
-      const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];
-      for(const[index,material]of materials.entries()){
-        if(!(material instanceof THREE.MeshStandardMaterial))continue;
-        const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}
-        if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);
-      }
-    });
+    prepared.scene.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;if(!id)return;const state=configuration.components[id];if(!state)return;const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);object.visible=state.visible&&!state.deleted&&!state.variantId;const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];for(const[index,material]of materials.entries()){if(!(material instanceof THREE.MeshStandardMaterial))continue;const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);}});
   },[configuration,manifest,prepared.scene]);
-  useEffect(()=>{
-    let cancelled=false;
-    for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];
-    if(!configuration)return()=>{cancelled=true;};
-    const tasks=Object.entries(configuration.components).filter(([,state])=>Boolean(state.variantId)&&state.visible&&!state.deleted).map(async([id,state])=>{
-      const variant=state.variantId?variants[state.variantId]:undefined;if(!variant)return;
-      let sourceObject:THREE.Object3D|undefined;prepared.scene.traverse(object=>{if(object.userData.__componentId===id)sourceObject=object;});if(!sourceObject?.parent)return;
-      const instance=await variantScene(variant.signedUrl);if(cancelled){disposeObject3D(instance);return;}
-      instance.name=`Variant ${variant.name}`;instance.traverse(object=>{object.userData.__componentId=id;});sourceObject.parent.add(instance);instance.position.copy(sourceObject.position);instance.rotation.copy(sourceObject.rotation);
-      const box=new THREE.Box3().setFromObject(instance),size=new THREE.Vector3();box.getSize(size);
-      if(variant.dimensionPolicy==='AUTO_FIT'&&size.x>0&&size.y>0&&size.z>0)instance.scale.set(state.dimensionsMm.width/1000/size.x*state.transform.scale[0],state.dimensionsMm.height/1000/size.y*state.transform.scale[1],state.dimensionsMm.depth/1000/size.z*state.transform.scale[2]);
-      variantInstances.current.push(instance);highlight(instance,useEditorStore.getState().selected);
-    });
-    void Promise.all(tasks).then(()=>{if(!cancelled)requestAnimationFrame(publishMeasurements);});
-    return()=>{cancelled=true;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];};
-  },[configuration,variants,prepared.scene,publishMeasurements]);
+  useEffect(()=>{let cancelled=false;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];if(!configuration)return()=>{cancelled=true;};const tasks=Object.entries(configuration.components).filter(([,state])=>Boolean(state.variantId)&&state.visible&&!state.deleted).map(async([id,state])=>{const variant=state.variantId?variants[state.variantId]:undefined;if(!variant)return;let sourceObject:THREE.Object3D|undefined;prepared.scene.traverse(object=>{if(object.userData.__componentId===id)sourceObject=object;});if(!sourceObject?.parent)return;const instance=await variantScene(variant.signedUrl);if(cancelled){disposeObject3D(instance);return;}instance.name=`Variant ${variant.name}`;instance.traverse(object=>{object.userData.__componentId=id;});sourceObject.parent.add(instance);instance.position.copy(sourceObject.position);instance.rotation.copy(sourceObject.rotation);const box=new THREE.Box3().setFromObject(instance),size=new THREE.Vector3();box.getSize(size);if(variant.dimensionPolicy==='AUTO_FIT'&&size.x>0&&size.y>0&&size.z>0)instance.scale.set(state.dimensionsMm.width/1000/size.x*state.transform.scale[0],state.dimensionsMm.height/1000/size.y*state.transform.scale[1],state.dimensionsMm.depth/1000/size.z*state.transform.scale[2]);variantInstances.current.push(instance);highlight(instance,useEditorStore.getState().selected);});void Promise.all(tasks).then(()=>{if(!cancelled)requestAnimationFrame(publishMeasurements);});return()=>{cancelled=true;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];};},[configuration,variants,prepared.scene,publishMeasurements]);
   useEffect(()=>{highlight(prepared.scene,selected);for(const instance of variantInstances.current)highlight(instance,selected);},[prepared.scene,selected]);
   useEffect(()=>{if(!groupRef.current||!configuration)return;const transform=configuration.placement.transform;groupRef.current.position.fromArray(transform.position);groupRef.current.rotation.set(...transform.rotation);groupRef.current.scale.fromArray(transform.scale);},[configuration?.placement.transform]);
   useEffect(()=>{const frame=requestAnimationFrame(publishMeasurements);return()=>cancelAnimationFrame(frame);},[configuration,selected,publishMeasurements]);
 
   const selectionTarget=useMemo(()=>findComponentObject(prepared.scene,selected),[prepared.scene,selected]);
   const selectedDefinition=manifest?.components.find(item=>item.id===selected),selectedState=selected?configuration?.components[selected]:undefined,selectionVisible=Boolean(selectedState?.visible&&!selectedState.deleted);
+  const selectedAnchors=(manifest?.anchors??[]).filter(anchor=>anchor.componentId===selected&&anchor.snapEnabled);
+  const candidateTarget=candidateState?findComponentObject(prepared.scene,candidateState.targetComponentId):undefined;
+
+  const updateSnapCandidate=useCallback(()=>{
+    if(!snapEnabled||componentMode!=='translate'||!manifest||!configuration||!selectedDefinition||!selectionTarget){snapCandidateRef.current=null;setCandidate(undefined);return;}
+    const candidate=findNearestAnchorCandidate({sourceComponentId:selectedDefinition.id,sourceObject:selectionTarget,manifest,configuration,objects:componentObjectMap(prepared.scene)});
+    if(!candidate){snapCandidateRef.current=null;setCandidate(undefined);return;}
+    const targetPoint=anchorWorldPosition(candidate.targetObject,candidate.targetAnchor);const perPixel=worldPerPixel(camera,canvasSize.height,targetPoint);const indicatorDistance=perPixel*NEAREST_INDICATOR_PIXELS;
+    if(candidate.distanceWorld>indicatorDistance){snapCandidateRef.current=null;setCandidate(undefined);return;}
+    const ready=candidate.compatible&&candidate.distanceWorld<=perPixel*SNAP_PIXELS;
+    snapCandidateRef.current={...candidate,ready};
+    setCandidate({sourceComponentId:selectedDefinition.id,sourceAnchorId:candidate.sourceAnchor.id,sourceAnchorName:candidate.sourceAnchor.name??candidate.sourceAnchor.id,targetComponentId:candidate.targetComponentId,targetComponentName:candidate.targetComponentName,targetAnchorId:candidate.targetAnchor.id,targetAnchorName:candidate.targetAnchor.name??candidate.targetAnchor.id,gapMm:candidate.distanceWorld*1000,compatible:candidate.compatible,ready});
+  },[snapEnabled,componentMode,manifest,configuration,selectedDefinition,selectionTarget,prepared.scene,camera,canvasSize.height,setCandidate]);
+
   const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
-  const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={showLabels}/>;
+  const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={labelsVisible}/>;
+  const proximity=candidateState?<ProximityIndicator target={candidateTarget} label={candidateState.targetComponentName} gapMm={candidateState.gapMm} compatible={candidateState.compatible} ready={candidateState.ready}/>:null;
+  const anchorMarkers=<AnchorMarkers target={selectionTarget} anchors={selectedAnchors} visible={Boolean(snapEnabled&&phase==='EDITOR'&&configuration?.placement.locked&&componentMode==='translate'&&selectionVisible)}/>;
   const orbitTarget=<SelectionOrbitTarget target={selectionTarget} enabled={Boolean(phase==='EDITOR'&&configuration?.placement.locked&&selectionVisible)} selectionKey={selected??''}/>;
   if(phase==='EDITOR'&&!configuration?.placement.locked)return <><TransformControls mode={placementMode} onObjectChange={()=>{const object=groupRef.current;if(!object)return;setPlacementTransform({position:object.position.toArray() as[number,number,number],rotation:[object.rotation.x,object.rotation.y,object.rotation.z],scale:object.scale.toArray() as[number,number,number]});}}>{model}</TransformControls>{indicator}</>;
-  const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls object={selectionTarget} mode={componentMode} showX={componentMode!=='scale'||selectedDefinition.editableAxes.x} showY={componentMode!=='scale'||selectedDefinition.editableAxes.y} showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z} onMouseDown={()=>{dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};}} onMouseUp={()=>{const start=dragRef.current;if(!start)return;const finalPosition=selectionTarget.position.clone(),finalRotation=selectionTarget.rotation.clone(),finalScale=selectionTarget.scale.clone();selectionTarget.position.copy(start.position);selectionTarget.rotation.copy(start.rotation);selectionTarget.scale.copy(start.scale);const actions:EditorAction[]=[];if(componentMode==='translate'){(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_POSITION',componentId:selectedDefinition.id,axis,value:start.state.transform.position[index]+(finalPosition.getComponent(index)-start.position.getComponent(index))*1000,source:'MANUAL'}));}else if(componentMode==='rotate'){(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));}else if(selectedDefinition.scalingMode==='AXIS_SCALE'){const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!selectedDefinition.editableAxes[axis])return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});}dragRef.current=null;if(actions.length)dispatchBatch(actions,`Direct ${componentMode} ${selectedDefinition.name}`);}}/>:null;
-  return <>{model}{componentControls}{indicator}{orbitTarget}</>;
+
+  const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls
+    object={selectionTarget}
+    mode={componentMode}
+    showX={componentMode!=='scale'||selectedDefinition.editableAxes.x}
+    showY={componentMode!=='scale'||selectedDefinition.editableAxes.y}
+    showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z}
+    onMouseDown={()=>{setCandidate(undefined);snapCandidateRef.current=null;dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};}}
+    onObjectChange={updateSnapCandidate}
+    onMouseUp={()=>{
+      const start=dragRef.current;if(!start)return;
+      let finalPosition=selectionTarget.position.clone(),finalRotation=selectionTarget.rotation.clone();const finalScale=selectionTarget.scale.clone();const snap=snapCandidateRef.current;
+      if(componentMode==='translate'&&snapEnabled&&snap?.ready){const resolved=snappedLocalTransform(selectionTarget,snap.sourceAnchor,snap.targetObject,snap.targetAnchor);finalPosition=resolved.position;if(snap.sourceAnchor.alignRotation&&snap.targetAnchor.alignRotation)finalRotation=resolved.rotation;}
+      selectionTarget.position.copy(start.position);selectionTarget.rotation.copy(start.rotation);selectionTarget.scale.copy(start.scale);
+      const actions:EditorAction[]=[];
+      if(componentMode==='translate'){
+        (['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_POSITION',componentId:selectedDefinition.id,axis,value:start.state.transform.position[index]+(finalPosition.getComponent(index)-start.position.getComponent(index))*1000,source:'MANUAL'}));
+        if(snap?.ready&&snap.sourceAnchor.alignRotation&&snap.targetAnchor.alignRotation)(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));
+        if(snapEnabled&&snap?.ready)actions.push({type:'ATTACH_COMPONENT',componentId:selectedDefinition.id,sourceAnchorId:snap.sourceAnchor.id,targetComponentId:snap.targetComponentId,targetAnchorId:snap.targetAnchor.id,createdBy:'SNAP',source:'MANUAL'});
+      }else if(componentMode==='rotate'){
+        (['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));
+      }else if(selectedDefinition.scalingMode==='AXIS_SCALE'){
+        const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!selectedDefinition.editableAxes[axis])return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});
+      }
+      dragRef.current=null;snapCandidateRef.current=null;setCandidate(undefined);if(actions.length)dispatchBatch(actions,snap?.ready?`Snap ${selectedDefinition.name} to ${snap.targetComponentName}`:`Direct ${componentMode} ${selectedDefinition.name}`);
+    }}
+  />:null;
+  return <>{model}{componentControls}{indicator}{proximity}{anchorMarkers}{orbitTarget}</>;
 }
 
 function NavigationAids(){return <><Grid infiniteGrid args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
-export default function ModelViewport(){const assetUrl=useEditorStore(state=>state.assetUrl);const[showLabels,setShowLabels]=useState(true);const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);useEffect(()=>{useMeasurementStore.getState().reset();},[assetUrl]);useEffect(()=>{const onKeyDown=(event:KeyboardEvent)=>{if(event.repeat||event.altKey||event.ctrlKey||event.metaKey||isEditableKeyboardTarget(event.target))return;if(event.key.toLowerCase()!=='l')return;event.preventDefault();setShowLabels(value=>!value);};window.addEventListener('keydown',onKeyDown);return()=>window.removeEventListener('keydown',onKeyDown);},[]);return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:100000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={100000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt} showLabels={showLabels}/></Bounds></Suspense>:null}</Canvas>;}
+
+export default function ModelViewport(){
+  const assetUrl=useEditorStore(state=>state.assetUrl),toggleLabels=useSnapInteractionStore(state=>state.toggleLabels),toggleSnap=useSnapInteractionStore(state=>state.toggleSnap),resetSnap=useSnapInteractionStore(state=>state.reset);
+  const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);
+  useEffect(()=>{useMeasurementStore.getState().reset();resetSnap();},[assetUrl,resetSnap]);
+  useEffect(()=>{const onKeyDown=(event:KeyboardEvent)=>{if(event.repeat||event.altKey||event.ctrlKey||event.metaKey||isEditableKeyboardTarget(event.target))return;const key=event.key.toLowerCase();if(key==='l'){event.preventDefault();toggleLabels();}else if(key==='s'){event.preventDefault();toggleSnap();}};window.addEventListener('keydown',onKeyDown);return()=>window.removeEventListener('keydown',onKeyDown);},[toggleLabels,toggleSnap]);
+  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:100000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={100000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
+}

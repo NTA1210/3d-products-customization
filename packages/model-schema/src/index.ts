@@ -1,22 +1,174 @@
 import { z } from 'zod';
-export const ComponentRole=z.enum(['UNKNOWN','TOP','LEG','FRAME','SEAT','BACK','CUSHION','ARMREST','HANDLE','PANEL','SHELF','DOOR','DRAWER','BASE','SUPPORT','DECORATION','OTHER']);export type ComponentRole=z.infer<typeof ComponentRole>;
-export const ScalingMode=z.enum(['FIXED','AXIS_SCALE','UNIFORM_SCALE','PARAMETRIC','VARIANT_ONLY']);export type ScalingMode=z.infer<typeof ScalingMode>;
-export const MaterialCategory=z.enum(['WOOD','METAL','FABRIC','STONE','PLASTIC','GLASS','OTHER']);export type MaterialCategory=z.infer<typeof MaterialCategory>;
-export const DimensionsSchema=z.object({width:z.number(),height:z.number(),depth:z.number()});export type Dimensions3D=z.infer<typeof DimensionsSchema>;
-const range=z.object({min:z.number().optional(),max:z.number().optional()}).nullable();
-export const DependencyRuleSchema=z.object({id:z.string(),sourceComponentId:z.string(),triggerProperty:z.enum(['WIDTH','HEIGHT','DEPTH','POSITION']),targetComponentId:z.string(),targetProperty:z.enum(['POSITION_X','POSITION_Y','POSITION_Z','WIDTH','HEIGHT','DEPTH']),formula:z.discriminatedUnion('type',[z.object({type:z.literal('DELTA_FACTOR'),factor:z.number()}),z.object({type:z.literal('SET_VALUE'),value:z.number()}),z.object({type:z.literal('CLAMPED_DELTA_FACTOR'),factor:z.number(),min:z.number().optional(),max:z.number().optional()})])});export type DependencyRule=z.infer<typeof DependencyRuleSchema>;
-export const AnchorDefinitionSchema=z.object({id:z.string(),componentId:z.string(),kind:z.enum(['POINT','PLANE','AXIS','BOUNDS_CENTER']),positionMm:z.tuple([z.number(),z.number(),z.number()]).default([0,0,0]),rotation:z.tuple([z.number(),z.number(),z.number()]).default([0,0,0]),tags:z.array(z.string()).default([])});export type AnchorDefinition=z.infer<typeof AnchorDefinitionSchema>;
-export const ComponentManifestSchema=z.object({id:z.string(),sourceNodeIds:z.array(z.string()).default([]),sourceMeshIds:z.array(z.string()).default([]),sourceRegionIds:z.array(z.string()).optional(),name:z.string(),role:ComponentRole.default('UNKNOWN'),editable:z.boolean().default(false),editableAxes:z.object({x:z.boolean(),y:z.boolean(),z:z.boolean()}).default({x:false,y:false,z:false}),scalingMode:ScalingMode.default('FIXED'),constraints:z.object({width:range,height:range,depth:range}),anchorIds:z.array(z.string()).default([]),variantGroupId:z.string().optional(),allowedMaterialCategories:z.array(MaterialCategory).optional(),materialSlotIds:z.array(z.string()).default([])});export type ComponentManifest=z.infer<typeof ComponentManifestSchema>;
-export const ModelManifestSchema=z.object({modelId:z.string(),version:z.number().int().positive(),unit:z.literal('mm'),axisMapping:z.object({width:z.enum(['x','y','z']),height:z.enum(['x','y','z']),depth:z.enum(['x','y','z'])}),components:z.array(ComponentManifestSchema),dependencies:z.array(DependencyRuleSchema).default([]),anchors:z.array(AnchorDefinitionSchema).optional()});export type ModelManifest=z.infer<typeof ModelManifestSchema>;
-export const TransformSchema=z.object({position:z.tuple([z.number(),z.number(),z.number()]),rotation:z.tuple([z.number(),z.number(),z.number()]),scale:z.tuple([z.number(),z.number(),z.number()])});export type TransformState=z.infer<typeof TransformSchema>;
-export const ComponentConfigurationSchema=z.object({originalDimensionsMm:DimensionsSchema,dimensionsMm:DimensionsSchema,transform:TransformSchema,materialId:z.string().optional(),color:z.string().optional(),variantId:z.string().optional(),visible:z.boolean().default(true),deleted:z.boolean().default(false)});export type ComponentConfiguration=z.infer<typeof ComponentConfigurationSchema>;
-export const ModelConfigurationSchema=z.object({modelId:z.string(),manifestVersion:z.number(),placement:z.object({locked:z.boolean(),transform:TransformSchema}),components:z.record(ComponentConfigurationSchema),appliedStyleId:z.string().optional(),appliedPresetId:z.string().optional()});export type ModelConfiguration=z.infer<typeof ModelConfigurationSchema>;
-export const MaterialPresetSchema=z.object({id:z.string(),name:z.string(),category:MaterialCategory,baseColor:z.string().optional(),roughness:z.number().min(0).max(1).default(.6),metalness:z.number().min(0).max(1).default(0),styleTags:z.array(z.string()).default([]),allowColorTint:z.boolean().default(true)});export type MaterialPreset=z.infer<typeof MaterialPresetSchema>;
-export const ComponentVariantSchema=z.object({id:z.string(),groupId:z.string(),name:z.string(),role:ComponentRole,assetUrl:z.string(),anchorType:z.string(),compatibleModelTags:z.array(z.string()).default([]),compatibleComponentRoles:z.array(ComponentRole).default([]),dimensionPolicy:z.enum(['KEEP','AUTO_FIT','RULE_BASED'])});export type ComponentVariant=z.infer<typeof ComponentVariantSchema>;
-export const AssetBoundsSchema=z.object({min:z.tuple([z.number(),z.number(),z.number()]),max:z.tuple([z.number(),z.number(),z.number()])});export type AssetBounds=z.infer<typeof AssetBoundsSchema>;
-export const GeometryRegionSchema=z.object({id:z.string(),sourceMeshId:z.string(),sourcePrimitiveId:z.string(),islandIndex:z.number().int().nonnegative(),triangleCount:z.number().int().nonnegative(),vertexCount:z.number().int().nonnegative(),bounds:AssetBoundsSchema.optional()});export type GeometryRegion=z.infer<typeof GeometryRegionSchema>;
-export const AssetPrimitiveAnalysisSchema=z.object({id:z.string(),primitiveIndex:z.number().int().nonnegative(),mode:z.number().int(),triangleCount:z.number().int().nonnegative(),vertexCount:z.number().int().nonnegative(),hasMaterial:z.boolean(),hasUv:z.boolean(),regions:z.array(GeometryRegionSchema)});export type AssetPrimitiveAnalysis=z.infer<typeof AssetPrimitiveAnalysisSchema>;
-export const AssetMeshAnalysisSchema=z.object({id:z.string(),meshIndex:z.number().int().nonnegative(),name:z.string(),sourceNodeIds:z.array(z.string()),primitives:z.array(AssetPrimitiveAnalysisSchema)});export type AssetMeshAnalysis=z.infer<typeof AssetMeshAnalysisSchema>;
-export const AssetComponentCandidateSchema=z.object({id:z.string(),name:z.string(),sourceNodeId:z.string(),sourceMeshId:z.string(),sourcePrimitiveId:z.string(),regionIds:z.array(z.string()),semanticStatus:z.literal('UNCONFIRMED')});export type AssetComponentCandidate=z.infer<typeof AssetComponentCandidateSchema>;
-export const AssetAnalysisWarningSchema=z.object({code:z.string(),severity:z.enum(['INFO','WARNING','ERROR']),message:z.string(),sourceId:z.string().optional()});export type AssetAnalysisWarning=z.infer<typeof AssetAnalysisWarningSchema>;
-export const AssetAnalysisSchema=z.object({version:z.literal(1),unitScaleToMm:z.number().positive(),stats:z.object({nodes:z.number().int().nonnegative(),meshes:z.number().int().nonnegative(),primitives:z.number().int().nonnegative(),triangles:z.number().int().nonnegative(),materials:z.number().int().nonnegative(),textures:z.number().int().nonnegative()}),meshes:z.array(AssetMeshAnalysisSchema),componentCandidates:z.array(AssetComponentCandidateSchema),warnings:z.array(AssetAnalysisWarningSchema)});export type AssetAnalysis=z.infer<typeof AssetAnalysisSchema>;
+
+export const ComponentRole = z.enum([
+  'UNKNOWN','TOP','LEG','FRAME','SEAT','BACK','CUSHION','ARMREST','HANDLE','PANEL','SHELF','DOOR','DRAWER','BASE','SUPPORT','DECORATION','OTHER',
+]);
+export type ComponentRole = z.infer<typeof ComponentRole>;
+
+export const ScalingMode = z.enum(['FIXED','AXIS_SCALE','UNIFORM_SCALE','PARAMETRIC','VARIANT_ONLY']);
+export type ScalingMode = z.infer<typeof ScalingMode>;
+
+export const MaterialCategory = z.enum(['WOOD','METAL','FABRIC','STONE','PLASTIC','GLASS','OTHER']);
+export type MaterialCategory = z.infer<typeof MaterialCategory>;
+
+export const DimensionsSchema = z.object({ width: z.number(), height: z.number(), depth: z.number() });
+export type Dimensions3D = z.infer<typeof DimensionsSchema>;
+
+const range = z.object({ min: z.number().optional(), max: z.number().optional() }).nullable();
+
+export const DependencyRuleSchema = z.object({
+  id: z.string(),
+  sourceComponentId: z.string(),
+  triggerProperty: z.enum(['WIDTH','HEIGHT','DEPTH','POSITION']),
+  targetComponentId: z.string(),
+  targetProperty: z.enum(['POSITION_X','POSITION_Y','POSITION_Z','WIDTH','HEIGHT','DEPTH']),
+  formula: z.discriminatedUnion('type',[
+    z.object({ type: z.literal('DELTA_FACTOR'), factor: z.number() }),
+    z.object({ type: z.literal('SET_VALUE'), value: z.number() }),
+    z.object({ type: z.literal('CLAMPED_DELTA_FACTOR'), factor: z.number(), min: z.number().optional(), max: z.number().optional() }),
+  ]),
+});
+export type DependencyRule = z.infer<typeof DependencyRuleSchema>;
+
+export const AnchorDefinitionSchema = z.object({
+  id: z.string(),
+  componentId: z.string(),
+  name: z.string().optional(),
+  kind: z.enum(['POINT','PLANE','AXIS','BOUNDS_CENTER']),
+  positionMm: z.tuple([z.number(),z.number(),z.number()]).default([0,0,0]),
+  rotation: z.tuple([z.number(),z.number(),z.number()]).default([0,0,0]),
+  tags: z.array(z.string()).default([]),
+  connectionType: z.string().default('GENERIC'),
+  compatibleTypes: z.array(z.string()).default(['GENERIC']),
+  autoGenerated: z.boolean().default(false),
+  snapEnabled: z.boolean().default(true),
+  alignRotation: z.boolean().default(false),
+});
+export type AnchorDefinition = z.infer<typeof AnchorDefinitionSchema>;
+
+export const ComponentManifestSchema = z.object({
+  id: z.string(),
+  sourceNodeIds: z.array(z.string()).default([]),
+  sourceMeshIds: z.array(z.string()).default([]),
+  sourceRegionIds: z.array(z.string()).optional(),
+  name: z.string(),
+  role: ComponentRole.default('UNKNOWN'),
+  editable: z.boolean().default(false),
+  editableAxes: z.object({ x:z.boolean(), y:z.boolean(), z:z.boolean() }).default({ x:false,y:false,z:false }),
+  scalingMode: ScalingMode.default('FIXED'),
+  constraints: z.object({ width:range, height:range, depth:range }),
+  anchorIds: z.array(z.string()).default([]),
+  variantGroupId: z.string().optional(),
+  allowedMaterialCategories: z.array(MaterialCategory).optional(),
+  materialSlotIds: z.array(z.string()).default([]),
+});
+export type ComponentManifest = z.infer<typeof ComponentManifestSchema>;
+
+export const ModelManifestSchema = z.object({
+  modelId: z.string(),
+  version: z.number().int().positive(),
+  unit: z.literal('mm'),
+  axisMapping: z.object({ width:z.enum(['x','y','z']), height:z.enum(['x','y','z']), depth:z.enum(['x','y','z']) }),
+  components: z.array(ComponentManifestSchema),
+  dependencies: z.array(DependencyRuleSchema).default([]),
+  anchors: z.array(AnchorDefinitionSchema).optional(),
+});
+export type ModelManifest = z.infer<typeof ModelManifestSchema>;
+
+export const TransformSchema = z.object({
+  position: z.tuple([z.number(),z.number(),z.number()]),
+  rotation: z.tuple([z.number(),z.number(),z.number()]),
+  scale: z.tuple([z.number(),z.number(),z.number()]),
+});
+export type TransformState = z.infer<typeof TransformSchema>;
+
+export const ComponentConfigurationSchema = z.object({
+  originalDimensionsMm: DimensionsSchema,
+  dimensionsMm: DimensionsSchema,
+  transform: TransformSchema,
+  materialId: z.string().optional(),
+  color: z.string().optional(),
+  variantId: z.string().optional(),
+  visible: z.boolean().default(true),
+  deleted: z.boolean().default(false),
+});
+export type ComponentConfiguration = z.infer<typeof ComponentConfigurationSchema>;
+
+export const AttachmentSchema = z.object({
+  id: z.string(),
+  sourceComponentId: z.string(),
+  sourceAnchorId: z.string(),
+  targetComponentId: z.string(),
+  targetAnchorId: z.string(),
+  createdBy: z.enum(['SNAP','MANUAL']).default('SNAP'),
+});
+export type Attachment = z.infer<typeof AttachmentSchema>;
+
+export const ModelConfigurationSchema = z.object({
+  modelId: z.string(),
+  manifestVersion: z.number(),
+  placement: z.object({ locked:z.boolean(), transform:TransformSchema }),
+  components: z.record(ComponentConfigurationSchema),
+  attachments: z.array(AttachmentSchema).optional(),
+  appliedStyleId: z.string().optional(),
+  appliedPresetId: z.string().optional(),
+});
+export type ModelConfiguration = z.infer<typeof ModelConfigurationSchema>;
+
+export const MaterialPresetSchema = z.object({
+  id:z.string(), name:z.string(), category:MaterialCategory, baseColor:z.string().optional(),
+  roughness:z.number().min(0).max(1).default(.6), metalness:z.number().min(0).max(1).default(0),
+  styleTags:z.array(z.string()).default([]), allowColorTint:z.boolean().default(true),
+});
+export type MaterialPreset = z.infer<typeof MaterialPresetSchema>;
+
+export const ComponentVariantSchema = z.object({
+  id:z.string(), groupId:z.string(), name:z.string(), role:ComponentRole, assetUrl:z.string(), anchorType:z.string(),
+  compatibleModelTags:z.array(z.string()).default([]), compatibleComponentRoles:z.array(ComponentRole).default([]),
+  dimensionPolicy:z.enum(['KEEP','AUTO_FIT','RULE_BASED']),
+});
+export type ComponentVariant = z.infer<typeof ComponentVariantSchema>;
+
+export const AssetBoundsSchema = z.object({ min:z.tuple([z.number(),z.number(),z.number()]), max:z.tuple([z.number(),z.number(),z.number()]) });
+export type AssetBounds = z.infer<typeof AssetBoundsSchema>;
+
+export const GeometryRegionSchema = z.object({
+  id:z.string(), sourceMeshId:z.string(), sourcePrimitiveId:z.string(), islandIndex:z.number().int().nonnegative(),
+  triangleCount:z.number().int().nonnegative(), vertexCount:z.number().int().nonnegative(), bounds:AssetBoundsSchema.optional(),
+});
+export type GeometryRegion = z.infer<typeof GeometryRegionSchema>;
+
+export const AssetPrimitiveAnalysisSchema = z.object({
+  id:z.string(), primitiveIndex:z.number().int().nonnegative(), mode:z.number().int(), triangleCount:z.number().int().nonnegative(),
+  vertexCount:z.number().int().nonnegative(), hasMaterial:z.boolean(), hasUv:z.boolean(), regions:z.array(GeometryRegionSchema),
+});
+export type AssetPrimitiveAnalysis = z.infer<typeof AssetPrimitiveAnalysisSchema>;
+
+export const AssetMeshAnalysisSchema = z.object({
+  id:z.string(), meshIndex:z.number().int().nonnegative(), name:z.string(), sourceNodeIds:z.array(z.string()),
+  primitives:z.array(AssetPrimitiveAnalysisSchema),
+});
+export type AssetMeshAnalysis = z.infer<typeof AssetMeshAnalysisSchema>;
+
+export const AssetComponentCandidateSchema = z.object({
+  id:z.string(), name:z.string(), sourceNodeId:z.string(), sourceMeshId:z.string(), sourcePrimitiveId:z.string(),
+  regionIds:z.array(z.string()), semanticStatus:z.literal('UNCONFIRMED'),
+});
+export type AssetComponentCandidate = z.infer<typeof AssetComponentCandidateSchema>;
+
+export const AssetAnalysisWarningSchema = z.object({
+  code:z.string(), severity:z.enum(['INFO','WARNING','ERROR']), message:z.string(), sourceId:z.string().optional(),
+});
+export type AssetAnalysisWarning = z.infer<typeof AssetAnalysisWarningSchema>;
+
+export const AssetAnalysisSchema = z.object({
+  version:z.literal(1), unitScaleToMm:z.number().positive(),
+  stats:z.object({
+    nodes:z.number().int().nonnegative(), meshes:z.number().int().nonnegative(), primitives:z.number().int().nonnegative(),
+    triangles:z.number().int().nonnegative(), materials:z.number().int().nonnegative(), textures:z.number().int().nonnegative(),
+  }),
+  meshes:z.array(AssetMeshAnalysisSchema),
+  componentCandidates:z.array(AssetComponentCandidateSchema),
+  warnings:z.array(AssetAnalysisWarningSchema),
+});
+export type AssetAnalysis = z.infer<typeof AssetAnalysisSchema>;

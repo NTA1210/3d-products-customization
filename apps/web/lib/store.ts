@@ -2,6 +2,7 @@
 
 import {create} from 'zustand';
 import type {
+  AnchorDefinition,
   AssetAnalysis,
   ComponentManifest,
   ComponentRole,
@@ -20,6 +21,19 @@ import type {RuntimeVariant} from './catalog-api';
 type Phase='EMPTY'|'PREPARE'|'EDITOR';
 type TransformMode='translate'|'rotate'|'scale';
 type Snapshot={configuration:ModelConfiguration;label:string};
+
+function mergeDetectedAnchors(saved:ModelManifest,detected:ModelManifest):ModelManifest{
+  if(saved.anchors?.length)return saved;
+  const detectedByComponent=new Map(detected.components.map(component=>[component.id,component.anchorIds]));
+  return{
+    ...saved,
+    anchors:detected.anchors??[],
+    components:saved.components.map(component=>({
+      ...component,
+      anchorIds:component.anchorIds.length?component.anchorIds:(detectedByComponent.get(component.id)??[]),
+    })),
+  };
+}
 
 type EditorStore={
   phase:Phase;
@@ -49,6 +63,9 @@ type EditorStore={
   setVariants:(v:RuntimeVariant[])=>void;
   select:(id?:string)=>void;
   patchComponentDefinition:(id:string,p:Partial<ComponentManifest>)=>void;
+  patchAnchor:(id:string,p:Partial<AnchorDefinition>)=>void;
+  addAnchor:(anchor:AnchorDefinition)=>void;
+  removeAnchor:(id:string)=>void;
   setRole:(id:string,r:ComponentRole)=>void;
   openEditor:()=>void;
   toggleLock:()=>void;
@@ -87,7 +104,8 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
           error:`Saved manifest could not map component IDs: ${missing.map(item=>item.id).join(', ')}. Loaded detected components instead.`,
         };
       }
-      return{configuration,selected:state.selected??state.manifest.components[0]?.id};
+      const mergedManifest=mergeDetectedAnchors(state.manifest,manifest);
+      return{manifest:mergedManifest,configuration,selected:state.selected??mergedManifest.components[0]?.id};
     }
     return{manifest,configuration,selected:manifest.components[0]?.id};
   }),
@@ -124,9 +142,38 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
   patchComponentDefinition:(id,patch)=>set(state=>!state.manifest?{}:{
     manifest:{...state.manifest,components:state.manifest.components.map(item=>item.id===id?{...item,...patch}:item)},
   }),
+  patchAnchor:(id,patch)=>set(state=>!state.manifest?{}:{
+    manifest:{...state.manifest,anchors:(state.manifest.anchors??[]).map(anchor=>anchor.id===id?{...anchor,...patch}:anchor)},
+  }),
+  addAnchor:anchor=>set(state=>{
+    if(!state.manifest)return{};
+    return{
+      manifest:{
+        ...state.manifest,
+        anchors:[...(state.manifest.anchors??[]).filter(item=>item.id!==anchor.id),anchor],
+        components:state.manifest.components.map(component=>component.id===anchor.componentId
+          ?{...component,anchorIds:[...new Set([...component.anchorIds,anchor.id])]}
+          :component),
+      },
+    };
+  }),
+  removeAnchor:id=>set(state=>{
+    if(!state.manifest)return{};
+    return{
+      manifest:{
+        ...state.manifest,
+        anchors:(state.manifest.anchors??[]).filter(anchor=>anchor.id!==id),
+        components:state.manifest.components.map(component=>({...component,anchorIds:component.anchorIds.filter(anchorId=>anchorId!==id)})),
+      },
+      configuration:state.configuration?{
+        ...state.configuration,
+        attachments:(state.configuration.attachments??[]).filter(item=>item.sourceAnchorId!==id&&item.targetAnchorId!==id),
+      }:state.configuration,
+    };
+  }),
   setRole:(id,role)=>get().patchComponentDefinition(id,{role}),
   openEditor:()=>set(state=>state.manifest&&state.configuration?{
-    phase:'EDITOR',configuration:{...state.configuration,manifestVersion:state.manifest.version},error:undefined,
+    phase:'EDITOR',configuration:{...state.configuration,manifestVersion:state.manifest.version,attachments:state.configuration.attachments??[]},error:undefined,
   }:{}),
   toggleLock:()=>set(state=>!state.configuration?{}:{
     configuration:{...state.configuration,placement:{...state.configuration.placement,locked:!state.configuration.placement.locked}},

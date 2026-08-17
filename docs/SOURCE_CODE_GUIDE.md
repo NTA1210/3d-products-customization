@@ -20,6 +20,7 @@ Không nên đọc repo bằng cách mở từng file ngẫu nhiên. Hãy đi th
 | Deploy production | [09 - Triển khai và vận hành](guides/09_DEPLOYMENT_AND_OPERATIONS.md) |
 | Debug lỗi thường gặp | [10 - Xử lý sự cố](guides/10_TROUBLESHOOTING.md) |
 | Thêm feature mới đúng kiến trúc | [11 - Hướng dẫn mở rộng](guides/11_EXTENSION_GUIDE.md) |
+| Gắn part, semantic anchor, Snap/Attach | [12 - Anchors, Snap và Attach](guides/12_ANCHORS_SNAP_ATTACH.md) |
 
 ## Thứ tự đọc khuyến nghị cho developer mới
 
@@ -56,6 +57,7 @@ Bộ guide này **không thay thế** các tài liệu kỹ thuật hiện hữu
 - **Three.js scene không phải business state.** Business state là Manifest + Configuration + ModelVersion.
 - Manual / Preset / Style / AI đều phải tạo **structured EditorAction** rồi đi qua schema, constraint, compatibility, dependency và apply pipeline.
 - Không bypass Action/Constraint/Compatibility pipeline để mutate trực tiếp scene.
+- **Attachment là business state, không phải Three.js hierarchy.** Component editable phải tiếp tục là runtime siblings; không re-parent mesh để biểu diễn việc gắn part.
 - Không lưu signed URL hết hạn vào DB như canonical state; lưu object key/ID và tạo signed URL khi cần.
 - Browser chỉ dùng Supabase publishable key. `DATABASE_URL`, `SUPABASE_SECRET_KEY` và `OPENAI_API_KEY` chỉ ở server/worker.
 - Tác vụ dài phải chạy qua BullMQ worker; không giữ HTTP request chờ Blender/Trimesh/export/AI hoàn tất.

@@ -14,7 +14,13 @@ export const EditorActionSchema = z.discriminatedUnion('type',[
   z.object({type:z.literal('DELETE_COMPONENT'),...componentBase}),
   z.object({type:z.literal('RESTORE_COMPONENT'),...componentBase}),
   z.object({type:z.literal('REPLACE_COMPONENT'),...componentBase,variantId:z.string().min(1)}),
-  z.object({type:z.literal('RESET_COMPONENT'),...componentBase})
+  z.object({
+    type:z.literal('ATTACH_COMPONENT'),...componentBase,
+    sourceAnchorId:z.string().min(1),targetComponentId:z.string().min(1),targetAnchorId:z.string().min(1),
+    createdBy:z.enum(['SNAP','MANUAL']).default('SNAP'),
+  }),
+  z.object({type:z.literal('DETACH_COMPONENT'),...componentBase}),
+  z.object({type:z.literal('RESET_COMPONENT'),...componentBase}),
 ]);
 export type EditorAction = z.infer<typeof EditorActionSchema>;
 
