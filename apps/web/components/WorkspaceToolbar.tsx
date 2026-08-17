@@ -18,6 +18,8 @@ export default function WorkspaceToolbar(){
   const redoStack=useEditorStore(state=>state.redoStack);
   const undo=useEditorStore(state=>state.undo);
   const redo=useEditorStore(state=>state.redo);
+  const dispatch=useEditorStore(state=>state.dispatch);
+  const dispatchBatch=useEditorStore(state=>state.dispatchBatch);
   const setPlacementMode=useEditorStore(state=>state.setPlacementMode);
   const setComponentMode=useEditorStore(state=>state.setComponentMode);
   const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled);
@@ -45,6 +47,7 @@ export default function WorkspaceToolbar(){
 
   const locked=Boolean(configuration?.placement.locked);
   const definition=manifest?.components.find(item=>item.id===selected);
+  const selectedState=selected?configuration?.components[selected]:undefined;
   const canScale=Boolean(locked&&definition?.editable&&definition.scalingMode==='AXIS_SCALE'&&Object.values(definition.editableAxes).some(Boolean));
   const activeMode=locked?componentMode:placementMode;
   const setMode=(mode:'translate'|'rotate'|'scale')=>{
@@ -52,6 +55,27 @@ export default function WorkspaceToolbar(){
     setComponentMode(mode);
   };
   const key=(action:keyof typeof bindings)=>shortcutDisplay(bindings[action],apple);
+  const hideSelected=()=>{
+    if(!selected||!selectedState||selectedState.deleted||!selectedState.visible)return;
+    dispatch({type:'SET_VISIBILITY',componentId:selected,visible:false,source:'MANUAL'},'Hide selected component');
+  };
+  const isolateSelected=()=>{
+    if(!selected||!configuration||!manifest)return;
+    const actions=manifest.components.flatMap(item=>{
+      const state=configuration.components[item.id];if(!state||state.deleted)return[];
+      const visible=item.id===selected;if(state.visible===visible)return[];
+      return[{type:'SET_VISIBILITY' as const,componentId:item.id,visible,source:'MANUAL' as const}];
+    });
+    if(actions.length)dispatchBatch(actions,'Isolate selected component');
+  };
+  const showAll=()=>{
+    if(!configuration||!manifest)return;
+    const actions=manifest.components.flatMap(item=>{
+      const state=configuration.components[item.id];if(!state||state.deleted||state.visible)return[];
+      return[{type:'SET_VISIBILITY' as const,componentId:item.id,visible:true,source:'MANUAL' as const}];
+    });
+    if(actions.length)dispatchBatch(actions,'Show all components');
+  };
 
   return <div className="viewport-toolbar dcc-toolbar" data-testid="viewport-toolbar">
     <div className="toolbar-group history-tools">
@@ -86,7 +110,7 @@ export default function WorkspaceToolbar(){
         </select>
       </label>
 
-      <button type="button" className={`tool-button compact ${gridSnapEnabled?'active':''}`} aria-pressed={gridSnapEnabled} onClick={toggleGridSnap} title={`Grid transform snap · ${key('toggleGridSnap')}`}>
+      <button type="button" aria-label="Grid transform snap" className={`tool-button compact ${gridSnapEnabled?'active':''}`} aria-pressed={gridSnapEnabled} onClick={toggleGridSnap} title={`Grid transform snap · ${key('toggleGridSnap')}`}>
         <span className="tool-icon">#</span><span>Grid</span><kbd>{key('toggleGridSnap')}</kbd>
       </button>
       {gridSnapEnabled&&<div className="toolbar-snap-step" title="Translation snap step">
@@ -94,17 +118,29 @@ export default function WorkspaceToolbar(){
         <input aria-label="Rotation snap step degrees" type="number" min="0.1" max="180" step="1" value={rotationSnapDeg} onChange={event=>setRotationSnapDeg(Number(event.target.value))}/><span>°</span>
       </div>}
 
-      <button type="button" className={`tool-button compact ${snapEnabled?'active':''}`} aria-pressed={snapEnabled} onClick={toggleSnap} title={`Anchor Magnetic Snap · ${key('toggleSnap')}`}>
+      <button type="button" aria-label="Anchor magnetic snap" className={`tool-button compact ${snapEnabled?'active':''}`} aria-pressed={snapEnabled} onClick={toggleSnap} title={`Anchor Magnetic Snap · ${key('toggleSnap')}`}>
         <span className="tool-icon">⌁</span><span>Anchor</span><kbd>{key('toggleSnap')}</kbd>
       </button>
 
       <span className="toolbar-divider"/>
       <div className="toolbar-group camera-tools">
-        <button type="button" className="tool-button compact" disabled={!selected} onClick={()=>requestFrame('selected')} title={`Frame selected · ${key('focusSelected')}`}>
+        <button type="button" aria-label="Frame selected" className="tool-button compact" disabled={!selected} onClick={()=>requestFrame('selected')} title={`Frame selected · ${key('focusSelected')}`}>
           <span className="tool-icon">◎</span><span>Focus</span><kbd>{key('focusSelected')}</kbd>
         </button>
-        <button type="button" className="tool-button compact" onClick={()=>requestFrame('all')} title={`Frame all · ${key('frameAll')}`}>
+        <button type="button" aria-label="Frame all" className="tool-button compact" onClick={()=>requestFrame('all')} title={`Frame all · ${key('frameAll')}`}>
           <span className="tool-icon">□</span><span>All</span><kbd>{key('frameAll')}</kbd>
+        </button>
+      </div>
+
+      <div className="toolbar-group visibility-tools" aria-label="Visibility tools">
+        <button type="button" aria-label="Hide selected" className="tool-button compact" disabled={!selectedState?.visible||selectedState?.deleted} onClick={hideSelected} title={`Hide selected · ${key('hideSelected')}`}>
+          <span className="tool-icon">◌</span><span>Hide</span><kbd>{key('hideSelected')}</kbd>
+        </button>
+        <button type="button" aria-label="Isolate selected" className="tool-button compact" disabled={!selected||selectedState?.deleted} onClick={isolateSelected} title={`Isolate selected · ${key('isolateSelected')}`}>
+          <span className="tool-icon">◉</span><span>Solo</span><kbd>{key('isolateSelected')}</kbd>
+        </button>
+        <button type="button" aria-label="Show all components" className="tool-button compact" onClick={showAll} title={`Show all · ${key('showAll')}`}>
+          <span className="tool-icon">◎</span><span>Show</span><kbd>{key('showAll')}</kbd>
         </button>
       </div>
 
