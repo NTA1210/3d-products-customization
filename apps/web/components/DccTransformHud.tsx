@@ -3,6 +3,7 @@
 import {useEffect,useState} from 'react';
 import {useDccViewportStore} from '../lib/dcc-viewport-store';
 import {useEditorStore} from '../lib/store';
+import {useMultiSelectionStore} from '../lib/multi-selection-store';
 
 function NumericField({label,value,step=1,onCommit,disabled=false}:{label:string;value:number;step?:number;onCommit:(value:number)=>void;disabled?:boolean}){
   const[draft,setDraft]=useState(String(Math.round(value*1000)/1000));
@@ -36,6 +37,7 @@ export default function DccTransformHud(){
   const configuration=useEditorStore(state=>state.configuration);
   const dispatch=useEditorStore(state=>state.dispatch);
   const dispatchBatch=useEditorStore(state=>state.dispatchBatch);
+  const selectedIds=useMultiSelectionStore(state=>state.ids);
   const transformSpace=useDccViewportStore(state=>state.transformSpace);
   const gridSnapEnabled=useDccViewportStore(state=>state.gridSnapEnabled);
   const gridStepMm=useDccViewportStore(state=>state.gridStepMm);
@@ -45,6 +47,40 @@ export default function DccTransformHud(){
   const definition=manifest?.components.find(item=>item.id===selected);
   const state=configuration.components[selected];
   if(!definition||!state||!manifest)return null;
+
+  if(selectedIds.length>1){
+    const editableCount=selectedIds.filter(id=>{
+      const item=manifest.components.find(component=>component.id===id);
+      const itemState=configuration.components[id];
+      return Boolean(item?.editable&&itemState?.visible&&!itemState.deleted);
+    }).length;
+    return <section className="transform-channel-box" data-testid="multi-transform-channel-box">
+      <div className="channel-heading">
+        <div>
+          <span className="eyebrow">Group Selection</span>
+          <strong>{selectedIds.length} components selected</strong>
+        </div>
+        <button type="button" onClick={()=>requestFrame('all')} title="Frame all · Home">Home</button>
+      </div>
+      <div className="channel-meta">
+        <span>{transformSpace.toUpperCase()}</span>
+        <span>{editableCount} EDITABLE</span>
+      </div>
+      <div className="channel-section">
+        <span className="channel-section-title">Group transform</span>
+        <p className="hint compact-hint">
+          <b>Shift + click</b> thêm/bỏ part · <b>W</b> Move · <b>E</b> Rotate. Một gizmo chung nằm ở tâm selection.
+        </p>
+        <p className="hint compact-hint">
+          Group Scale và Anchor Snap tạm khóa vì constraint/anchor thuộc từng component.
+        </p>
+      </div>
+      <div className="channel-actions">
+        <button type="button" onClick={()=>useMultiSelectionStore.getState().setSingle(selected)}>Keep primary only</button>
+        <button type="button" onClick={()=>requestFrame('all')}>Frame all</button>
+      </div>
+    </section>;
+  }
 
   const setPosition=(axis:'X'|'Y'|'Z',value:number)=>dispatch({type:'SET_POSITION',componentId:selected,axis,value,source:'MANUAL'},`Set ${axis} position`);
   const setRotation=(axis:'X'|'Y'|'Z',degrees:number)=>dispatch({type:'SET_ROTATION',componentId:selected,axis,value:degrees*Math.PI/180,source:'MANUAL'},`Set ${axis} rotation`);
