@@ -22,7 +22,6 @@ export default function WorkspaceToolbar(){
   const dispatchBatch=useEditorStore(state=>state.dispatchBatch);
   const setPlacementMode=useEditorStore(state=>state.setPlacementMode);
   const setComponentMode=useEditorStore(state=>state.setComponentMode);
-  const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled);
   const persistentSnapEnabled=useSnapInteractionStore(state=>state.persistentSnapEnabled);
   const temporarySnapActive=useSnapInteractionStore(state=>state.temporarySnapActive);
   const attachMode=useSnapInteractionStore(state=>state.attachMode);
