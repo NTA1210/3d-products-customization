@@ -1,6 +1,6 @@
 # DCC Editor Workflow
 
-This guide describes the editor interaction model after the DCC workflow pass. The goal is not to clone Maya or Blender feature-for-feature. The goal is to keep the interaction conventions that make professional 3D tools fast: stable camera state, explicit framing, hotkey-first transforms, local/world space, numeric channels, precision snapping, visibility isolation, and configurable keymaps.
+This guide describes the editor interaction model after the DCC workflow pass. The goal is not to clone Maya or Blender feature-for-feature. The goal is to keep the interaction conventions that make professional 3D tools fast: stable camera state, explicit framing, navigation modifiers, hotkey-first transforms, local/world space, numeric channels, precision snapping, visibility isolation, and configurable keymaps.
 
 ## 1. Core interaction model
 
@@ -13,7 +13,18 @@ Use explicit framing when you want the camera to move:
 
 This prevents the viewport from fighting the user while repeatedly selecting and adjusting nearby parts.
 
-## 2. Maya / Standard DCC keymap
+## 2. Viewport navigation
+
+Mouse navigation is separated from normal left-click selection:
+
+- `Alt + Left Mouse` — Orbit / tumble.
+- `Alt + Middle Mouse` — Pan / track.
+- `Alt + Right Mouse` — Dolly.
+- Mouse wheel — Zoom at any time.
+
+While Alt navigation is active, clicking geometry does not change the selected component and clicking empty space does not clear the selection.
+
+## 3. Maya / Standard DCC keymap
 
 The default keymap is optimized for the existing editor and common DCC muscle memory:
 
@@ -37,7 +48,7 @@ The default keymap is optimized for the existing editor and common DCC muscle me
 
 All shortcuts remain editable from **Keymap** in the viewport toolbar.
 
-## 3. Blender-style preset
+## 4. Blender-style preset
 
 Open **Keymap → Blender style** when G/R/S transform muscle memory is preferred.
 
@@ -50,7 +61,7 @@ The preset maps:
 
 This is deliberately called *Blender style*, not a complete Blender keymap. Product-specific actions such as semantic Anchor Snap remain separate from generic transform snapping.
 
-## 4. World and Local transform space
+## 5. World and Local transform space
 
 The viewport toolbar exposes **World / Local**.
 
@@ -59,7 +70,7 @@ The viewport toolbar exposes **World / Local**.
 
 Use Local when adjusting a rotated wing, leg, handle, panel, or other part along its own axes.
 
-## 5. Grid transform snap vs Anchor Snap
+## 6. Grid transform snap vs Anchor Snap
 
 These are intentionally different systems.
 
@@ -81,7 +92,7 @@ Use this for assembly relationships such as a leg socket, wing mount, engine mou
 
 Keeping the two snap systems separate avoids a generic grid rule accidentally replacing product assembly logic.
 
-## 6. Channel Box
+## 7. Channel Box
 
 After **Lock placement**, selecting an editable component opens a compact Channel Box over the viewport.
 
@@ -95,7 +106,7 @@ Numeric edits commit on Enter or when the field loses focus. Typing intermediate
 
 Dimension fields respect the Manifest `axisMapping`, `editableAxes`, and scaling mode.
 
-## 7. Visibility workflow
+## 8. Visibility workflow
 
 Complex models are easier to edit when unrelated geometry can be temporarily removed from view.
 
@@ -105,7 +116,7 @@ Complex models are easier to edit when unrelated geometry can be temporarily rem
 
 These operations use `SET_VISIBILITY` actions and therefore participate in Undo/Redo. They do not mutate the source GLB.
 
-## 8. Soft ground barrier
+## 9. Soft ground barrier
 
 The existing Y=0 soft barrier remains active while translating components.
 
@@ -116,33 +127,34 @@ It is an interaction aid rather than a hard model constraint:
 3. Continuing the drag intentionally releases the barrier.
 4. The component may then move below Y=0.
 
-## 9. Gizmo size
+## 10. Gizmo size
 
 Use the `- / +` controls in the viewport toolbar when the transform manipulator is too large or too small for the current zoom level/model scale.
 
 The preference is stored locally for the browser.
 
-## 10. State ownership
+## 11. State ownership
 
 DCC interaction preferences such as transform space, grid snap step, gizmo size, and keymap live in browser-side UI stores.
 
 Actual product changes still flow through the editor action engine and Model Configuration. The viewport remains a view/controller; it is not the source of truth for product state.
 
-## 11. Recommended editing sequence
+## 12. Recommended editing sequence
 
 For a typical part adjustment:
 
 1. Click the component to select it.
-2. Press `F` only if you need to reframe it.
-3. Choose `W`, `E`, or `R`.
-4. Select World or Local space.
-5. Enable `X` Grid Snap for regular increments when needed.
-6. Use `S` Anchor Snap when assembling compatible parts.
-7. Use the Channel Box for exact final values.
-8. Use `H / Shift+H / Alt+H` to control visual clutter.
-9. Undo/Redo with Ctrl/Cmd + Z and Ctrl/Cmd + Shift + Z.
+2. Use `Alt + mouse` to navigate without changing selection.
+3. Press `F` only if you need to reframe it.
+4. Choose `W`, `E`, or `R`.
+5. Select World or Local space.
+6. Enable `X` Grid Snap for regular increments when needed.
+7. Use `S` Anchor Snap when assembling compatible parts.
+8. Use the Channel Box for exact final values.
+9. Use `H / Shift+H / Alt+H` to control visual clutter.
+10. Undo/Redo with Ctrl/Cmd + Z and Ctrl/Cmd + Shift + Z.
 
-## 12. Next DCC capabilities
+## 13. Next DCC capabilities
 
 The next logical capabilities, if required by product workflows, are:
 
