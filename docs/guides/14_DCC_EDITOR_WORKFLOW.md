@@ -15,14 +15,19 @@ This prevents the viewport from fighting the user while repeatedly selecting and
 
 ## 2. Viewport navigation
 
-Mouse navigation is separated from normal left-click selection:
+Camera navigation is always available without stealing normal left-click selection:
+
+- `Right Mouse drag` — Orbit / tumble.
+- `Middle Mouse drag` — Pan / track.
+- Mouse wheel — Zoom at any time.
+
+The Maya-style modifier navigation remains available as an alternative:
 
 - `Alt + Left Mouse` — Orbit / tumble.
 - `Alt + Middle Mouse` — Pan / track.
 - `Alt + Right Mouse` — Dolly.
-- Mouse wheel — Zoom at any time.
 
-While Alt navigation is active, clicking geometry does not change the selected component and clicking empty space does not clear the selection.
+Normal left click remains dedicated to component selection/editing. Right and middle mouse navigation do not change the selected component. While Alt navigation is active, clicking geometry does not change selection and clicking empty space does not clear it.
 
 ## 3. Maya / Standard DCC keymap
 
@@ -144,7 +149,7 @@ Actual product changes still flow through the editor action engine and Model Con
 For a typical part adjustment:
 
 1. Click the component to select it.
-2. Use `Alt + mouse` to navigate without changing selection.
+2. Use Right Mouse / Middle Mouse for immediate orbit/pan, or `Alt + mouse` for Maya-style navigation without changing selection.
 3. Press `F` only if you need to reframe it.
 4. Choose `W`, `E`, or `R`.
 5. Select World or Local space.
