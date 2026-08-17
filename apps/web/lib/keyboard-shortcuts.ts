@@ -12,6 +12,7 @@ export type ShortcutAction=
   |'showAll'
   |'toggleLabels'
   |'toggleSnap'
+  |'toggleAttach'
   |'gizmoIncrease'
   |'gizmoDecrease'
   |'deleteSelected';
@@ -38,7 +39,8 @@ export const SHORTCUT_DEFINITIONS:ShortcutDefinition[]=[
   {action:'isolateSelected',label:'Isolate selected',description:'Chỉ hiển thị component đang chọn.',defaultBinding:'Shift+H'},
   {action:'showAll',label:'Show all components',description:'Hiện lại tất cả component chưa bị delete.',defaultBinding:'Alt+H'},
   {action:'toggleLabels',label:'Component labels',description:'Bật/tắt label component theo mode gần nhất.',defaultBinding:'L'},
-  {action:'toggleSnap',label:'Anchor magnetic snap',description:'Bật/tắt Magnetic Snap giữa các anchor.',defaultBinding:'S'},
+  {action:'toggleSnap',label:'Anchor positioning assist',description:'Bật/tắt Magnetic Snap để căn vị trí; không tự tạo attachment.',defaultBinding:'S'},
+  {action:'toggleAttach',label:'Attach mode',description:'Bật/tắt chế độ assembly. Snap thành công sẽ tạo attachment.',defaultBinding:'J'},
   {action:'gizmoIncrease',label:'Increase gizmo size',description:'Tăng kích thước transform manipulator.',defaultBinding:'='},
   {action:'gizmoDecrease',label:'Decrease gizmo size',description:'Giảm kích thước transform manipulator.',defaultBinding:'-'},
   {action:'deleteSelected',label:'Delete component',description:'Xóa component đang chọn trong Editor.',defaultBinding:'Delete'},
@@ -57,6 +59,7 @@ export const SHORTCUT_PRESETS:Record<ShortcutPreset,Record<ShortcutAction,string
     scale:'S',
     toggleSnap:'Shift+Tab',
     toggleGridSnap:'',
+    toggleAttach:'J',
     focusSelected:'F',
     frameAll:'Home',
   },
