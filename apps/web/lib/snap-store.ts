@@ -98,5 +98,10 @@ export const useSnapInteractionStore=create<SnapInteractionStore>((set)=>({
     :{labelMode:mode,lastVisibleLabelMode:mode}),
   setCandidate:candidate=>set({candidate}),
   setGroundBarrier:groundBarrier=>set({groundBarrier}),
-  reset:()=>set({candidate:undefined,groundBarrier:undefined,temporarySnapActive:false}),
+  reset:()=>set(state=>({
+    candidate:undefined,
+    groundBarrier:undefined,
+    temporarySnapActive:false,
+    snapEnabled:resolvedSnap(state.persistentSnapEnabled,false,state.attachMode),
+  })),
 }));
