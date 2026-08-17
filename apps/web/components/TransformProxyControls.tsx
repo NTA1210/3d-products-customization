@@ -110,7 +110,7 @@ export function PlacementTransformProxy({
   onCommit:(transform:TransformState)=>void;
 }){
   const proxy=useMemo(()=>new THREE.Object3D(),[]);
-  const dragging=useRef(false),drag=useRef<ProxyDrag>();
+  const dragging=useRef(false),drag=useRef<ProxyDrag|undefined>(undefined);
 
   useFrame(()=>{
     if(dragging.current)return;
@@ -186,7 +186,7 @@ export function MultiSelectionTransformProxy({
     return next;
   },[box]);
   const labelRef=useRef<THREE.Group>(null);
-  const dragging=useRef(false),drag=useRef<ProxyDrag>();
+  const dragging=useRef(false),drag=useRef<ProxyDrag|undefined>(undefined);
 
   const movableIds=useMemo(()=>selectedIds.filter(id=>{
     const definition=manifest?.components.find(item=>item.id===id);
