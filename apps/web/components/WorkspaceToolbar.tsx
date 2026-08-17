@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useState} from 'react';
+import {useDccViewportStore,type TransformSpace} from '../lib/dcc-viewport-store';
 import {shortcutDisplay} from '../lib/keyboard-shortcuts';
 import {useShortcutStore} from '../lib/shortcut-store';
 import {useEditorStore} from '../lib/store';
@@ -23,6 +24,18 @@ export default function WorkspaceToolbar(){
   const toggleSnap=useSnapInteractionStore(state=>state.toggleSnap);
   const labelMode=useSnapInteractionStore(state=>state.labelMode);
   const setLabelMode=useSnapInteractionStore(state=>state.setLabelMode);
+  const transformSpace=useDccViewportStore(state=>state.transformSpace);
+  const setTransformSpace=useDccViewportStore(state=>state.setTransformSpace);
+  const gridSnapEnabled=useDccViewportStore(state=>state.gridSnapEnabled);
+  const toggleGridSnap=useDccViewportStore(state=>state.toggleGridSnap);
+  const gridStepMm=useDccViewportStore(state=>state.gridStepMm);
+  const setGridStepMm=useDccViewportStore(state=>state.setGridStepMm);
+  const rotationSnapDeg=useDccViewportStore(state=>state.rotationSnapDeg);
+  const setRotationSnapDeg=useDccViewportStore(state=>state.setRotationSnapDeg);
+  const gizmoSize=useDccViewportStore(state=>state.gizmoSize);
+  const increaseGizmo=useDccViewportStore(state=>state.increaseGizmo);
+  const decreaseGizmo=useDccViewportStore(state=>state.decreaseGizmo);
+  const requestFrame=useDccViewportStore(state=>state.requestFrame);
   const bindings=useShortcutStore(state=>state.bindings);
   const openSettings=useShortcutStore(state=>state.openSettings);
   const[apple,setApple]=useState(false);
@@ -40,13 +53,13 @@ export default function WorkspaceToolbar(){
   };
   const key=(action:keyof typeof bindings)=>shortcutDisplay(bindings[action],apple);
 
-  return <div className="viewport-toolbar" data-testid="viewport-toolbar">
+  return <div className="viewport-toolbar dcc-toolbar" data-testid="viewport-toolbar">
     <div className="toolbar-group history-tools">
-      <button type="button" className="tool-button" aria-label="Undo" title={`Undo · ${key('undo')}`} disabled={!undoStack.length} onClick={undo}>
-        <span className="tool-icon">↶</span><span>Undo</span><kbd>{key('undo')}</kbd>
+      <button type="button" className="tool-button icon-only" aria-label="Undo" title={`Undo · ${key('undo')}`} disabled={!undoStack.length} onClick={undo}>
+        <span className="tool-icon">↶</span><kbd>{key('undo')}</kbd>
       </button>
-      <button type="button" className="tool-button" aria-label="Redo" title={`Redo · ${key('redo')}`} disabled={!redoStack.length} onClick={redo}>
-        <span className="tool-icon">↷</span><span>Redo</span><kbd>{key('redo')}</kbd>
+      <button type="button" className="tool-button icon-only" aria-label="Redo" title={`Redo · ${key('redo')}`} disabled={!redoStack.length} onClick={redo}>
+        <span className="tool-icon">↷</span><kbd>{key('redo')}</kbd>
       </button>
     </div>
 
@@ -54,7 +67,7 @@ export default function WorkspaceToolbar(){
       <span className="toolbar-divider"/>
       <div className="toolbar-group transform-tools" aria-label="Transform tools">
         <button type="button" aria-label="Transform position" className={`tool-button compact ${activeMode==='translate'?'active':''}`} title={`Move · ${key('move')}`} onClick={()=>setMode('translate')}>
-          <span className="tool-icon">↔</span><span>Move</span><kbd>{key('move')}</kbd>
+          <span className="tool-icon axis-icon">↔</span><span>Move</span><kbd>{key('move')}</kbd>
         </button>
         <button type="button" aria-label="Transform orientation" className={`tool-button compact ${activeMode==='rotate'?'active':''}`} title={`Rotate · ${key('rotate')}`} onClick={()=>setMode('rotate')}>
           <span className="tool-icon">⟳</span><span>Rotate</span><kbd>{key('rotate')}</kbd>
@@ -63,10 +76,43 @@ export default function WorkspaceToolbar(){
           <span className="tool-icon">⤢</span><span>Scale</span><kbd>{key('scale')}</kbd>
         </button>
       </div>
+
       <span className="toolbar-divider"/>
-      <button type="button" className={`tool-button compact ${snapEnabled?'active':''}`} aria-pressed={snapEnabled} onClick={toggleSnap} title={`Magnetic Snap · ${key('toggleSnap')}`}>
-        <span className="tool-icon">⌁</span><span>Snap</span><kbd>{key('toggleSnap')}</kbd>
+      <label className="toolbar-select compact-select" title="Transform orientation space">
+        <span>Space</span>
+        <select aria-label="Transform space" value={transformSpace} onChange={event=>setTransformSpace(event.target.value as TransformSpace)}>
+          <option value="world">World</option>
+          <option value="local">Local</option>
+        </select>
+      </label>
+
+      <button type="button" className={`tool-button compact ${gridSnapEnabled?'active':''}`} aria-pressed={gridSnapEnabled} onClick={toggleGridSnap} title={`Grid transform snap · ${key('toggleGridSnap')}`}>
+        <span className="tool-icon">#</span><span>Grid</span><kbd>{key('toggleGridSnap')}</kbd>
       </button>
+      {gridSnapEnabled&&<div className="toolbar-snap-step" title="Translation snap step">
+        <input aria-label="Grid snap step mm" type="number" min="0.001" step="1" value={gridStepMm} onChange={event=>setGridStepMm(Number(event.target.value))}/><span>mm</span>
+        <input aria-label="Rotation snap step degrees" type="number" min="0.1" max="180" step="1" value={rotationSnapDeg} onChange={event=>setRotationSnapDeg(Number(event.target.value))}/><span>°</span>
+      </div>}
+
+      <button type="button" className={`tool-button compact ${snapEnabled?'active':''}`} aria-pressed={snapEnabled} onClick={toggleSnap} title={`Anchor Magnetic Snap · ${key('toggleSnap')}`}>
+        <span className="tool-icon">⌁</span><span>Anchor</span><kbd>{key('toggleSnap')}</kbd>
+      </button>
+
+      <span className="toolbar-divider"/>
+      <div className="toolbar-group camera-tools">
+        <button type="button" className="tool-button compact" disabled={!selected} onClick={()=>requestFrame('selected')} title={`Frame selected · ${key('focusSelected')}`}>
+          <span className="tool-icon">◎</span><span>Focus</span><kbd>{key('focusSelected')}</kbd>
+        </button>
+        <button type="button" className="tool-button compact" onClick={()=>requestFrame('all')} title={`Frame all · ${key('frameAll')}`}>
+          <span className="tool-icon">□</span><span>All</span><kbd>{key('frameAll')}</kbd>
+        </button>
+      </div>
+
+      <div className="toolbar-group gizmo-tools" title={`Gizmo size ${Math.round(gizmoSize*100)}%`}>
+        <button type="button" className="tool-button icon-only" aria-label="Decrease gizmo size" onClick={decreaseGizmo}>−</button>
+        <span className="gizmo-scale-value">{Math.round(gizmoSize*100)}%</span>
+        <button type="button" className="tool-button icon-only" aria-label="Increase gizmo size" onClick={increaseGizmo}>+</button>
+      </div>
     </>}
 
     <span className="toolbar-divider"/>
@@ -81,7 +127,7 @@ export default function WorkspaceToolbar(){
     </label>
 
     <button type="button" className="tool-button compact settings-tool" aria-label="Keyboard shortcut settings" onClick={openSettings} title="Keyboard shortcuts">
-      <span className="tool-icon">⌨</span><span>Shortcuts</span>
+      <span className="tool-icon">⌨</span><span>Keymap</span>
     </button>
   </div>;
 }
