@@ -22,7 +22,7 @@ function NumericField({label,value,step=1,onCommit,disabled=false}:{label:string
       onChange={event=>setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={event=>{
-        if(event.key==='Enter'){event.currentTarget.blur();}
+        if(event.key==='Enter')event.currentTarget.blur();
         if(event.key==='Escape'){setDraft(String(Math.round(value*1000)/1000));event.currentTarget.blur();}
       }}
     />
@@ -44,17 +44,20 @@ export default function DccTransformHud(){
   if(phase!=='EDITOR'||!configuration?.placement.locked||!selected)return null;
   const definition=manifest?.components.find(item=>item.id===selected);
   const state=configuration.components[selected];
-  if(!definition||!state)return null;
+  if(!definition||!state||!manifest)return null;
 
   const setPosition=(axis:'X'|'Y'|'Z',value:number)=>dispatch({type:'SET_POSITION',componentId:selected,axis,value,source:'MANUAL'},`Set ${axis} position`);
   const setRotation=(axis:'X'|'Y'|'Z',degrees:number)=>dispatch({type:'SET_ROTATION',componentId:selected,axis,value:degrees*Math.PI/180,source:'MANUAL'},`Set ${axis} rotation`);
   const setDimension=(axis:'WIDTH'|'HEIGHT'|'DEPTH',value:number)=>dispatch({type:'SET_DIMENSION',componentId:selected,axis,valueMm:Math.max(.001,value),source:'MANUAL'},`Set ${axis.toLowerCase()}`);
   const resetTransform=()=>dispatchBatch([
-    ...(['X','Y','Z'] as const).map((axis,index)=>({type:'SET_POSITION' as const,componentId:selected,axis,value:0,source:'MANUAL' as const})),
-    ...(['X','Y','Z'] as const).map((axis,index)=>({type:'SET_ROTATION' as const,componentId:selected,axis,value:0,source:'MANUAL' as const})),
+    ...(['X','Y','Z'] as const).map(axis=>({type:'SET_POSITION' as const,componentId:selected,axis,value:0,source:'MANUAL' as const})),
+    ...(['X','Y','Z'] as const).map(axis=>({type:'SET_ROTATION' as const,componentId:selected,axis,value:0,source:'MANUAL' as const})),
   ],`Reset transform ${definition.name}`);
 
   const canResize=definition.editable&&definition.scalingMode==='AXIS_SCALE';
+  const widthAxis=manifest.axisMapping.width;
+  const heightAxis=manifest.axisMapping.height;
+  const depthAxis=manifest.axisMapping.depth;
   return <section className="transform-channel-box" data-testid="transform-channel-box">
     <div className="channel-heading">
       <div>
@@ -82,9 +85,9 @@ export default function DccTransformHud(){
     <div className="channel-section">
       <span className="channel-section-title">Dimensions · mm</span>
       <div className="channel-grid">
-        <NumericField label="W" value={state.dimensionsMm.width} onCommit={value=>setDimension('WIDTH',value)} disabled={!canResize||!definition.editableAxes.x}/>
-        <NumericField label="H" value={state.dimensionsMm.height} onCommit={value=>setDimension('HEIGHT',value)} disabled={!canResize||!definition.editableAxes.y}/>
-        <NumericField label="D" value={state.dimensionsMm.depth} onCommit={value=>setDimension('DEPTH',value)} disabled={!canResize||!definition.editableAxes.z}/>
+        <NumericField label="W" value={state.dimensionsMm.width} onCommit={value=>setDimension('WIDTH',value)} disabled={!canResize||!definition.editableAxes[widthAxis]}/>
+        <NumericField label="H" value={state.dimensionsMm.height} onCommit={value=>setDimension('HEIGHT',value)} disabled={!canResize||!definition.editableAxes[heightAxis]}/>
+        <NumericField label="D" value={state.dimensionsMm.depth} onCommit={value=>setDimension('DEPTH',value)} disabled={!canResize||!definition.editableAxes[depthAxis]}/>
       </div>
     </div>
     <div className="channel-actions">
