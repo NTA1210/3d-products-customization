@@ -1,6 +1,6 @@
 'use client';
 
-import {Suspense,useCallback,useEffect,useMemo,useRef} from 'react';
+import {Suspense,useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import {Bounds,GizmoHelper,GizmoViewport,Grid,Html,OrbitControls,TransformControls,useGLTF} from '@react-three/drei';
 import {analyzeTriangleTopology,type TriangleRegion} from '@product3d/geometry-topology';
@@ -12,9 +12,9 @@ import {useEditorStore} from '../lib/store';
 import {useMeasurementStore,type RuntimeMeasurement} from '../lib/measurement-store';
 import {flattenComponentObjects,hasNestedComponentObjects} from '../lib/component-scene';
 import {demoMaterials} from '../lib/materials';
+import {isEditableKeyboardTarget} from '../lib/keyboard-shortcuts';
 import {reportViewerLoad} from '../lib/metrics';
 
-const EMPTY_TRANSFORM:TransformState={position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};
 const MAX_REGION_COMPONENTS=32;
 const MAX_MODEL_COMPONENTS=96;
 type BaseMaterialState={color:string;roughness:number;metalness:number}|null;
@@ -25,6 +25,7 @@ type OrbitControlsLike={target:THREE.Vector3;update:()=>void};
 const variantCache=new Map<string,Promise<THREE.Object3D>>();
 const pendingDisposals=new WeakMap<THREE.Object3D,symbol>();
 
+function freshTransform():TransformState{return{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};}
 function pad(value:number,size=4){return String(value).padStart(size,'0');}
 function stablePath(object:THREE.Object3D){const names:string[]=[];let current:THREE.Object3D|null=object;while(current){const index=current.parent?current.parent.children.indexOf(current):0;names.push(`${current.name||current.type}[${index}]`);current=current.parent;}return names.reverse().join('/');}
 function hashPath(value:string){let hash=2166136261;for(let index=0;index<value.length;index+=1){hash^=value.charCodeAt(index);hash=Math.imul(hash,16777619);}return(hash>>>0).toString(16).padStart(8,'0');}
@@ -86,18 +87,14 @@ function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssoci
     }
   }
 
-  // Source GLB nodes may nest meshes under other meshes. In the editor that
-  // would make a parent component's transform propagate to child components.
-  // Flatten every runtime component beneath one neutral sibling layer while
-  // preserving the original world transform and stable component IDs.
   const runtimeComponents=parts.map(part=>({id:part.id,object:part.mesh as THREE.Object3D}));
   flattenComponentObjects(clone,runtimeComponents);
   if(hasNestedComponentObjects(runtimeComponents))throw new Error('EDITOR_COMPONENT_HIERARCHY_NOT_FLAT');
 
   for(const part of parts)initializePart(part);clone.updateMatrixWorld(true);
   const components:ModelManifest['components']=[],configs:ModelConfiguration['components']={};
-  for(const part of parts){const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:[],materialSlotIds:[]});configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:{...EMPTY_TRANSFORM},visible:true,deleted:false};}
-  return{scene:clone,manifest:{modelId,version:1,unit:'mm',axisMapping:{width:'x',height:'y',depth:'z'},components,dependencies:[]} satisfies ModelManifest,configuration:{modelId,manifestVersion:1,placement:{locked:false,transform:{...EMPTY_TRANSFORM}},components:configs} satisfies ModelConfiguration};
+  for(const part of parts){const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:[],materialSlotIds:[]});configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:freshTransform(),visible:true,deleted:false};}
+  return{scene:clone,manifest:{modelId,version:1,unit:'mm',axisMapping:{width:'x',height:'y',depth:'z'},components,dependencies:[]} satisfies ModelManifest,configuration:{modelId,manifestVersion:1,placement:{locked:false,transform:freshTransform()},components:configs} satisfies ModelConfiguration};
 }
 
 async function variantScene(url:string){let cached=variantCache.get(url);if(!cached){cached=new GLTFLoader().loadAsync(url).then(gltf=>gltf.scene);variantCache.set(url,cached);}return cloneOwnedScene(await cached);}
@@ -134,7 +131,7 @@ function measureRelative(root:THREE.Object3D,relativeTo:THREE.Object3D,component
   };
 }
 
-function SelectionIndicator({target,label,visible}:{target?:THREE.Object3D;label?:string;visible:boolean}){const box=useMemo(()=>new THREE.Box3(),[]);const helper=useMemo(()=>{const next=new THREE.Box3Helper(box,'#4cc9ff');const material=next.material as THREE.LineBasicMaterial;material.depthTest=false;material.transparent=true;material.opacity=.95;next.renderOrder=1000;return next;},[box]);const labelRef=useRef<THREE.Group>(null),size=useMemo(()=>new THREE.Vector3(),[]),center=useMemo(()=>new THREE.Vector3(),[]);useEffect(()=>()=>{helper.geometry.dispose();(helper.material as THREE.LineBasicMaterial).dispose();},[helper]);useFrame(()=>{const show=Boolean(visible&&target);helper.visible=show;if(labelRef.current)labelRef.current.visible=show;if(!show||!target)return;target.updateWorldMatrix(true,true);box.setFromObject(target);if(box.isEmpty()){helper.visible=false;if(labelRef.current)labelRef.current.visible=false;return;}box.getCenter(center);box.getSize(size);const offset=Math.max(size.length()*.04,.02);if(labelRef.current)labelRef.current.position.set(center.x,box.max.y+offset,center.z);});return <><primitive object={helper}/><group ref={labelRef} visible={false}><Html center style={{pointerEvents:'none'}}><div data-testid="selection-indicator" style={{whiteSpace:'nowrap',border:'1px solid #4cc9ff',borderRadius:6,background:'rgba(7, 18, 31, 0.92)',color:'#e9f8ff',padding:'4px 8px',fontSize:11,fontWeight:700,boxShadow:'0 2px 12px rgba(0,0,0,.35)'}}>{label??'Selected component'}</div></Html></group></>;}
+function SelectionIndicator({target,label,visible,showLabel}:{target?:THREE.Object3D;label?:string;visible:boolean;showLabel:boolean}){const box=useMemo(()=>new THREE.Box3(),[]);const helper=useMemo(()=>{const next=new THREE.Box3Helper(box,'#4cc9ff');const material=next.material as THREE.LineBasicMaterial;material.depthTest=false;material.transparent=true;material.opacity=.95;next.renderOrder=1000;return next;},[box]);const labelRef=useRef<THREE.Group>(null),size=useMemo(()=>new THREE.Vector3(),[]),center=useMemo(()=>new THREE.Vector3(),[]);useEffect(()=>()=>{helper.geometry.dispose();(helper.material as THREE.LineBasicMaterial).dispose();},[helper]);useFrame(()=>{const show=Boolean(visible&&target);helper.visible=show;if(labelRef.current)labelRef.current.visible=show&&showLabel;if(!show||!target)return;target.updateWorldMatrix(true,true);box.setFromObject(target);if(box.isEmpty()){helper.visible=false;if(labelRef.current)labelRef.current.visible=false;return;}box.getCenter(center);box.getSize(size);const offset=Math.max(size.length()*.04,.02);if(labelRef.current)labelRef.current.position.set(center.x,box.max.y+offset,center.z);});return <><primitive object={helper}/><group ref={labelRef} visible={false}><Html center style={{pointerEvents:'none'}}><div data-testid="selection-indicator" style={{whiteSpace:'nowrap',border:'1px solid #4cc9ff',borderRadius:6,background:'rgba(7, 18, 31, 0.92)',color:'#e9f8ff',padding:'4px 8px',fontSize:11,fontWeight:700,boxShadow:'0 2px 12px rgba(0,0,0,.35)'}}>{label??'Selected component'}</div></Html></group></>;}
 
 function SelectionOrbitTarget({target,enabled,selectionKey}:{target?:THREE.Object3D;enabled:boolean;selectionKey:string}){
   const camera=useThree(state=>state.camera);
@@ -154,7 +151,7 @@ function SelectionOrbitTarget({target,enabled,selectionKey}:{target?:THREE.Objec
   return null;
 }
 
-function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
+function LoadedModel({url,loadStartedAt,showLabels}:{url:string;loadStartedAt:number;showLabels:boolean}){
   const gltf=useGLTF(url);const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
   const associations=(gltf.parser as unknown as{associations:Map<THREE.Object3D,GltfAssociation>}).associations;
@@ -213,7 +210,7 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const selectionTarget=useMemo(()=>findComponentObject(prepared.scene,selected),[prepared.scene,selected]);
   const selectedDefinition=manifest?.components.find(item=>item.id===selected),selectedState=selected?configuration?.components[selected]:undefined,selectionVisible=Boolean(selectedState?.visible&&!selectedState.deleted);
   const model=<group ref={groupRef} onPointerDown={event=>{event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
-  const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible}/>;
+  const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={showLabels}/>;
   const orbitTarget=<SelectionOrbitTarget target={selectionTarget} enabled={Boolean(phase==='EDITOR'&&configuration?.placement.locked&&selectionVisible)} selectionKey={selected??''}/>;
   if(phase==='EDITOR'&&!configuration?.placement.locked)return <><TransformControls mode={placementMode} onObjectChange={()=>{const object=groupRef.current;if(!object)return;setPlacementTransform({position:object.position.toArray() as[number,number,number],rotation:[object.rotation.x,object.rotation.y,object.rotation.z],scale:object.scale.toArray() as[number,number,number]});}}>{model}</TransformControls>{indicator}</>;
   const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls object={selectionTarget} mode={componentMode} showX={componentMode!=='scale'||selectedDefinition.editableAxes.x} showY={componentMode!=='scale'||selectedDefinition.editableAxes.y} showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z} onMouseDown={()=>{dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};}} onMouseUp={()=>{const start=dragRef.current;if(!start)return;const finalPosition=selectionTarget.position.clone(),finalRotation=selectionTarget.rotation.clone(),finalScale=selectionTarget.scale.clone();selectionTarget.position.copy(start.position);selectionTarget.rotation.copy(start.rotation);selectionTarget.scale.copy(start.scale);const actions:EditorAction[]=[];if(componentMode==='translate'){(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_POSITION',componentId:selectedDefinition.id,axis,value:start.state.transform.position[index]+(finalPosition.getComponent(index)-start.position.getComponent(index))*1000,source:'MANUAL'}));}else if(componentMode==='rotate'){(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));}else if(selectedDefinition.scalingMode==='AXIS_SCALE'){const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!selectedDefinition.editableAxes[axis])return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});}dragRef.current=null;if(actions.length)dispatchBatch(actions,`Direct ${componentMode} ${selectedDefinition.name}`);}}/>:null;
@@ -221,4 +218,4 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
 }
 
 function NavigationAids(){return <><Grid infiniteGrid args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
-export default function ModelViewport(){const assetUrl=useEditorStore(state=>state.assetUrl);const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);useEffect(()=>{useMeasurementStore.getState().reset();},[assetUrl]);return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:100000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={100000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;}
+export default function ModelViewport(){const assetUrl=useEditorStore(state=>state.assetUrl);const[showLabels,setShowLabels]=useState(true);const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);useEffect(()=>{useMeasurementStore.getState().reset();},[assetUrl]);useEffect(()=>{const onKeyDown=(event:KeyboardEvent)=>{if(event.repeat||event.altKey||event.ctrlKey||event.metaKey||isEditableKeyboardTarget(event.target))return;if(event.key.toLowerCase()!=='l')return;event.preventDefault();setShowLabels(value=>!value);};window.addEventListener('keydown',onKeyDown);return()=>window.removeEventListener('keydown',onKeyDown);},[]);return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:100000}} shadows onPointerMissed={()=>useEditorStore.getState().select(undefined)}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><OrbitControls makeDefault enableDamping dampingFactor={.08} screenSpacePanning minDistance={.02} maxDistance={100000}/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt} showLabels={showLabels}/></Bounds></Suspense>:null}</Canvas>;}
