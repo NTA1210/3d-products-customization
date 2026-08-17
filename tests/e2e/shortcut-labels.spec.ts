@@ -23,7 +23,7 @@ async function signIn(page:Page){
   await expect(page.getByText('shortcuts@example.com')).toBeVisible();
 }
 
-test('component labels and keyboard shortcuts are user configurable',async({page})=>{
+test('component labels, DCC tools and keyboard shortcuts are user configurable',async({page})=>{
   await mockAuth(page);
   await page.route('http://127.0.0.1:4000/api/**',async route=>{
     const request=route.request();
@@ -69,6 +69,8 @@ test('component labels and keyboard shortcuts are user configurable',async({page
 
   await page.getByRole('button',{name:'Keyboard shortcut settings'}).click();
   await expect(page.getByTestId('shortcut-settings')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Maya / Standard'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Blender style'})).toBeVisible();
   await page.getByRole('button',{name:'Change shortcut for Component labels'}).click();
   await page.keyboard.press('Shift+L');
   await expect(page.getByText(/Component labels =/)).toBeVisible();
@@ -88,6 +90,29 @@ test('component labels and keyboard shortcuts are user configurable',async({page
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
   await page.getByRole('button',{name:'Lock placement'}).click();
   await expect(page.getByTestId('customize-panel')).toBeVisible();
+  await expect(page.getByTestId('transform-channel-box')).toBeVisible();
+
+  const transformSpace=page.getByLabel('Transform space');
+  await expect(transformSpace).toHaveValue('world');
+  await transformSpace.selectOption('local');
+  await expect(transformSpace).toHaveValue('local');
+
+  const gridSnap=page.getByRole('button',{name:'Grid transform snap'});
+  await expect(gridSnap).toHaveAttribute('aria-pressed','false');
+  await gridSnap.click();
+  await expect(gridSnap).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByLabel('Grid snap step mm')).toHaveValue('100');
+  await expect(page.getByLabel('Rotation snap step degrees')).toHaveValue('15');
+
+  await page.keyboard.press('f');
+  await page.keyboard.press('Home');
+
+  const hideButton=page.getByRole('button',{name:'Hide selected'});
+  await expect(hideButton).toBeEnabled();
+  await page.keyboard.press('h');
+  await expect(hideButton).toBeDisabled();
+  await page.keyboard.press('Alt+h');
+  await expect(hideButton).toBeEnabled();
 
   const material=page.locator('label:has-text("Material") + select');
   await material.selectOption('mat_oak_light');
