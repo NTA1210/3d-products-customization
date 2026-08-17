@@ -50,8 +50,9 @@ function validateAttachment(manifest:ModelManifest,action:Extract<EditorAction,{
   if(action.componentId===action.targetComponentId){
     return {ok:false,code:'ATTACH_SELF',message:'A component cannot attach to itself.',action};
   }
-  const sourceAnchor=manifest.anchors.find(item=>item.id===action.sourceAnchorId&&item.componentId===action.componentId);
-  const targetAnchor=manifest.anchors.find(item=>item.id===action.targetAnchorId&&item.componentId===action.targetComponentId);
+  const anchors=manifest.anchors??[];
+  const sourceAnchor=anchors.find(item=>item.id===action.sourceAnchorId&&item.componentId===action.componentId);
+  const targetAnchor=anchors.find(item=>item.id===action.targetAnchorId&&item.componentId===action.targetComponentId);
   if(!sourceAnchor||!targetAnchor){
     return {ok:false,code:'ANCHOR_NOT_FOUND',message:'One or both attachment anchors do not exist in the active manifest.',action};
   }
@@ -95,7 +96,7 @@ function applyDependencyRules(before:ModelConfiguration,next:ModelConfiguration,
 function translateAttachedChildren(config:ModelConfiguration,targetComponentId:string,index:number,delta:number,visited=new Set<string>()){
   if(Math.abs(delta)<1e-9||visited.has(targetComponentId))return;
   visited.add(targetComponentId);
-  for(const attachment of config.attachments.filter(item=>item.targetComponentId===targetComponentId)){
+  for(const attachment of (config.attachments??[]).filter(item=>item.targetComponentId===targetComponentId)){
     const source=config.components[attachment.sourceComponentId];
     if(!source)continue;
     source.transform.position[index]+=delta;
@@ -135,10 +136,8 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
   const component=next.components[action.componentId];
   const positionBefore=[...component.transform.position] as [number,number,number];
 
-  // Moving/rotating/resizing an attached source means the user is intentionally
-  // pulling it away. Drop the previous logical bond; a new snap can attach it again.
   if(['SET_POSITION','SET_ROTATION','SET_DIMENSION','REPLACE_COMPONENT'].includes(action.type)){
-    next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId);
+    next.attachments=(next.attachments??[]).filter(item=>item.sourceComponentId!==action.componentId);
   }
 
   switch(action.type){
@@ -148,14 +147,14 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
     case 'SET_VISIBILITY': component.visible=action.visible; break;
     case 'DELETE_COMPONENT':
       component.deleted=true;component.visible=false;
-      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId&&item.targetComponentId!==action.componentId);
+      next.attachments=(next.attachments??[]).filter(item=>item.sourceComponentId!==action.componentId&&item.targetComponentId!==action.componentId);
       break;
     case 'RESTORE_COMPONENT': component.deleted=false;component.visible=true; break;
     case 'REPLACE_COMPONENT': component.variantId=action.variantId; break;
     case 'SET_POSITION': component.transform.position[{X:0,Y:1,Z:2}[action.axis]]=action.value; break;
     case 'SET_ROTATION': component.transform.rotation[{X:0,Y:1,Z:2}[action.axis]]=action.value; break;
     case 'ATTACH_COMPONENT': {
-      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId);
+      next.attachments=(next.attachments??[]).filter(item=>item.sourceComponentId!==action.componentId);
       next.attachments.push({
         id:`att_${action.componentId}_${action.sourceAnchorId}_${action.targetComponentId}_${action.targetAnchorId}`,
         sourceComponentId:action.componentId,
@@ -167,13 +166,13 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
       break;
     }
     case 'DETACH_COMPONENT':
-      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId);
+      next.attachments=(next.attachments??[]).filter(item=>item.sourceComponentId!==action.componentId);
       break;
     case 'RESET_COMPONENT': {
       component.dimensionsMm=structuredClone(component.originalDimensionsMm);
       component.transform={position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};
       component.materialId=undefined;component.color=undefined;component.variantId=undefined;component.visible=true;component.deleted=false;
-      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId&&item.targetComponentId!==action.componentId);
+      next.attachments=(next.attachments??[]).filter(item=>item.sourceComponentId!==action.componentId&&item.targetComponentId!==action.componentId);
       break;
     }
   }
