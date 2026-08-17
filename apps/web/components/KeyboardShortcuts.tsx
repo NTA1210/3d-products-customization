@@ -9,6 +9,7 @@ import {
   shortcutMatches,
   type ShortcutAction,
 } from '../lib/keyboard-shortcuts';
+import {useDccViewportStore} from '../lib/dcc-viewport-store';
 import {useShortcutStore} from '../lib/shortcut-store';
 import {useEditorStore} from '../lib/store';
 import {useSnapInteractionStore} from '../lib/snap-store';
@@ -16,6 +17,7 @@ import {useSnapInteractionStore} from '../lib/snap-store';
 function executeShortcut(action:ShortcutAction){
   const editor=useEditorStore.getState();
   const snap=useSnapInteractionStore.getState();
+  const dcc=useDccViewportStore.getState();
   switch(action){
     case'undo':editor.undo();return;
     case'redo':editor.redo();return;
@@ -36,8 +38,13 @@ function executeShortcut(action:ShortcutAction){
       if(canResize)editor.setComponentMode('scale');
       return;
     }
+    case'focusSelected':if(editor.selected)dcc.requestFrame('selected');return;
+    case'frameAll':dcc.requestFrame('all');return;
+    case'toggleGridSnap':dcc.toggleGridSnap();return;
     case'toggleLabels':snap.toggleLabels();return;
     case'toggleSnap':snap.toggleSnap();return;
+    case'gizmoIncrease':dcc.increaseGizmo();return;
+    case'gizmoDecrease':dcc.decreaseGizmo();return;
     case'deleteSelected':{
       if(editor.phase!=='EDITOR'||!editor.selected)return;
       const state=editor.configuration?.components[editor.selected];
@@ -51,15 +58,33 @@ function executeShortcut(action:ShortcutAction){
 export default function KeyboardShortcuts(){
   const bindings=useShortcutStore(state=>state.bindings);
   const settingsOpen=useShortcutStore(state=>state.settingsOpen);
+  const activePreset=useShortcutStore(state=>state.activePreset);
   const closeSettings=useShortcutStore(state=>state.closeSettings);
   const setBinding=useShortcutStore(state=>state.setBinding);
   const clearBinding=useShortcutStore(state=>state.clearBinding);
+  const applyPreset=useShortcutStore(state=>state.applyPreset);
   const resetDefaults=useShortcutStore(state=>state.resetDefaults);
   const[capturing,setCapturing]=useState<ShortcutAction>();
   const[notice,setNotice]=useState<string>();
   const[apple,setApple]=useState(false);
 
   useEffect(()=>setApple(/Mac|iPhone|iPad|iPod/.test(navigator.platform)),[]);
+
+  useEffect(()=>{
+    const setAlt=(active:boolean)=>useDccViewportStore.getState().setAltNavigation(active);
+    const down=(event:KeyboardEvent)=>{if(event.key==='Alt')setAlt(true);};
+    const up=(event:KeyboardEvent)=>{if(event.key==='Alt')setAlt(false);};
+    const blur=()=>setAlt(false);
+    window.addEventListener('keydown',down,{capture:true});
+    window.addEventListener('keyup',up,{capture:true});
+    window.addEventListener('blur',blur);
+    return()=>{
+      window.removeEventListener('keydown',down,{capture:true});
+      window.removeEventListener('keyup',up,{capture:true});
+      window.removeEventListener('blur',blur);
+      setAlt(false);
+    };
+  },[]);
 
   useEffect(()=>{
     const onKeyDown=(event:KeyboardEvent)=>{
@@ -105,11 +130,17 @@ export default function KeyboardShortcuts(){
     <section className="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcut-title" data-testid="shortcut-settings">
       <div className="dialog-heading">
         <div>
-          <div className="eyebrow">Preferences</div>
+          <div className="eyebrow">Preferences · DCC keymap</div>
           <h2 id="shortcut-title">Keyboard shortcuts</h2>
-          <p>Click một shortcut rồi nhấn tổ hợp phím mới. Thiết lập được lưu trên trình duyệt này.</p>
+          <p>Chọn preset quen thuộc rồi tùy biến. Click một shortcut và nhấn tổ hợp phím mới.</p>
         </div>
         <button className="icon-button" type="button" aria-label="Close shortcut settings" onClick={closeSettings}>×</button>
+      </div>
+
+      <div className="shortcut-presets" aria-label="Keymap presets">
+        <button type="button" className={activePreset==='maya'?'active':''} onClick={()=>{applyPreset('maya');setNotice('Đã áp dụng Maya / Standard DCC keymap.');}}>Maya / Standard</button>
+        <button type="button" className={activePreset==='blender'?'active':''} onClick={()=>{applyPreset('blender');setNotice('Đã áp dụng Blender-style transform keymap.');}}>Blender style</button>
+        {activePreset==='custom'&&<span>Custom keymap</span>}
       </div>
 
       {notice&&<div className="shortcut-notice">{notice}</div>}
@@ -141,7 +172,7 @@ export default function KeyboardShortcuts(){
       <div className="dialog-footer">
         <span>Esc hủy record · Shortcut không chạy khi bạn đang nhập text.</span>
         <div>
-          <button type="button" onClick={()=>{resetDefaults();setNotice('Đã khôi phục shortcut mặc định.');}}>Reset defaults</button>
+          <button type="button" onClick={()=>{resetDefaults();setNotice('Đã khôi phục Maya / Standard DCC defaults.');}}>Reset defaults</button>
           <button className="primary" type="button" onClick={closeSettings}>Done</button>
         </div>
       </div>
