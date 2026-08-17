@@ -4,9 +4,16 @@ export type ShortcutAction=
   |'move'
   |'rotate'
   |'scale'
+  |'focusSelected'
+  |'frameAll'
+  |'toggleGridSnap'
   |'toggleLabels'
   |'toggleSnap'
+  |'gizmoIncrease'
+  |'gizmoDecrease'
   |'deleteSelected';
+
+export type ShortcutPreset='maya'|'blender';
 
 export type ShortcutDefinition={
   action:ShortcutAction;
@@ -21,14 +28,33 @@ export const SHORTCUT_DEFINITIONS:ShortcutDefinition[]=[
   {action:'move',label:'Move tool',description:'Chuyển sang công cụ Move.',defaultBinding:'W'},
   {action:'rotate',label:'Rotate tool',description:'Chuyển sang công cụ Rotate.',defaultBinding:'E'},
   {action:'scale',label:'Resize tool',description:'Chuyển sang công cụ Resize khi part cho phép.',defaultBinding:'R'},
+  {action:'focusSelected',label:'Frame selected',description:'Đưa camera tới component đang chọn mà không thay đổi model.',defaultBinding:'F'},
+  {action:'frameAll',label:'Frame all',description:'Đưa toàn bộ model trở lại khung nhìn.',defaultBinding:'Home'},
+  {action:'toggleGridSnap',label:'Grid transform snap',description:'Bật/tắt snap theo bước transform chính xác.',defaultBinding:'X'},
   {action:'toggleLabels',label:'Component labels',description:'Bật/tắt label component theo mode gần nhất.',defaultBinding:'L'},
-  {action:'toggleSnap',label:'Magnetic snap',description:'Bật/tắt Magnetic Snap.',defaultBinding:'S'},
+  {action:'toggleSnap',label:'Anchor magnetic snap',description:'Bật/tắt Magnetic Snap giữa các anchor.',defaultBinding:'S'},
+  {action:'gizmoIncrease',label:'Increase gizmo size',description:'Tăng kích thước transform manipulator.',defaultBinding:'='},
+  {action:'gizmoDecrease',label:'Decrease gizmo size',description:'Giảm kích thước transform manipulator.',defaultBinding:'-'},
   {action:'deleteSelected',label:'Delete component',description:'Xóa component đang chọn trong Editor.',defaultBinding:'Delete'},
 ];
 
 export const DEFAULT_SHORTCUT_BINDINGS=Object.fromEntries(
   SHORTCUT_DEFINITIONS.map(item=>[item.action,item.defaultBinding]),
 ) as Record<ShortcutAction,string>;
+
+export const SHORTCUT_PRESETS:Record<ShortcutPreset,Record<ShortcutAction,string>>={
+  maya:{...DEFAULT_SHORTCUT_BINDINGS},
+  blender:{
+    ...DEFAULT_SHORTCUT_BINDINGS,
+    move:'G',
+    rotate:'R',
+    scale:'S',
+    toggleSnap:'Shift+Tab',
+    toggleGridSnap:'',
+    focusSelected:'F',
+    frameAll:'Home',
+  },
+};
 
 export function isEditableKeyboardTarget(target:EventTarget|null){
   if(typeof HTMLElement==='undefined'||!(target instanceof HTMLElement))return false;
