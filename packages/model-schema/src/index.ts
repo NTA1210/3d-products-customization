@@ -71,7 +71,7 @@ export const ModelManifestSchema = z.object({
   axisMapping: z.object({ width:z.enum(['x','y','z']), height:z.enum(['x','y','z']), depth:z.enum(['x','y','z']) }),
   components: z.array(ComponentManifestSchema),
   dependencies: z.array(DependencyRuleSchema).default([]),
-  anchors: z.array(AnchorDefinitionSchema).default([]),
+  anchors: z.array(AnchorDefinitionSchema).optional(),
 });
 export type ModelManifest = z.infer<typeof ModelManifestSchema>;
 
@@ -109,7 +109,7 @@ export const ModelConfigurationSchema = z.object({
   manifestVersion: z.number(),
   placement: z.object({ locked:z.boolean(), transform:TransformSchema }),
   components: z.record(ComponentConfigurationSchema),
-  attachments: z.array(AttachmentSchema).default([]),
+  attachments: z.array(AttachmentSchema).optional(),
   appliedStyleId: z.string().optional(),
   appliedPresetId: z.string().optional(),
 });
