@@ -29,13 +29,15 @@ describe('keyboard shortcut model',()=>{
     expect(shortcutConflicts(DEFAULT_SHORTCUT_BINDINGS,'toggleSnap','Alt+S')).toBeUndefined();
   });
 
-  it('ships a Maya-style standard DCC keymap with explicit framing and grid snap',()=>{
+  it('ships a Maya-style standard DCC keymap with explicit framing, snap and attach',()=>{
     expect(SHORTCUT_PRESETS.maya.move).toBe('W');
     expect(SHORTCUT_PRESETS.maya.rotate).toBe('E');
     expect(SHORTCUT_PRESETS.maya.scale).toBe('R');
     expect(SHORTCUT_PRESETS.maya.focusSelected).toBe('F');
     expect(SHORTCUT_PRESETS.maya.frameAll).toBe('Home');
     expect(SHORTCUT_PRESETS.maya.toggleGridSnap).toBe('X');
+    expect(SHORTCUT_PRESETS.maya.toggleSnap).toBe('S');
+    expect(SHORTCUT_PRESETS.maya.toggleAttach).toBe('J');
   });
 
   it('offers a Blender-style transform preset without colliding scale and anchor snap',()=>{
@@ -43,6 +45,7 @@ describe('keyboard shortcut model',()=>{
     expect(SHORTCUT_PRESETS.blender.rotate).toBe('R');
     expect(SHORTCUT_PRESETS.blender.scale).toBe('S');
     expect(SHORTCUT_PRESETS.blender.toggleSnap).toBe('Shift+Tab');
+    expect(SHORTCUT_PRESETS.blender.toggleAttach).toBe('J');
     expect(shortcutConflicts(SHORTCUT_PRESETS.blender,'scale',SHORTCUT_PRESETS.blender.scale)).toBeUndefined();
   });
 
