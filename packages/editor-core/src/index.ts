@@ -1,4 +1,11 @@
-import type { ComponentVariant,MaterialPreset,ModelConfiguration,ModelManifest,TransformState } from '@product3d/model-schema';
+import type {
+  AnchorDefinition,
+  ComponentVariant,
+  MaterialPreset,
+  ModelConfiguration,
+  ModelManifest,
+  TransformState,
+} from '@product3d/model-schema';
 import type { EditorAction } from '@product3d/action-engine';
 import { EditorActionSchema } from '@product3d/action-engine';
 import { validateAction } from '@product3d/constraint-engine';
@@ -22,20 +29,36 @@ function cloneTransform(transform:TransformState):TransformState{
   };
 }
 
-/**
- * structuredClone preserves aliasing inside an object graph. Older viewer
- * configurations were created with shallow copies of one EMPTY_TRANSFORM,
- * which means multiple components can share the same position/rotation/scale
- * arrays. Normalize transforms after cloning so an action can only mutate the
- * component it targets (unless an explicit manifest dependency says otherwise).
- */
 function cloneConfiguration(input:ModelConfiguration):ModelConfiguration{
   const next=structuredClone(input);
   next.placement.transform=cloneTransform(next.placement.transform);
-  for(const component of Object.values(next.components)){
-    component.transform=cloneTransform(component.transform);
-  }
+  for(const component of Object.values(next.components))component.transform=cloneTransform(component.transform);
+  next.attachments=[...(next.attachments??[])];
   return next;
+}
+
+function anchorCompatible(source:AnchorDefinition,target:AnchorDefinition){
+  if(!source.snapEnabled||!target.snapEnabled)return false;
+  const sourceTypes=source.compatibleTypes?.length?source.compatibleTypes:['GENERIC'];
+  const targetTypes=target.compatibleTypes?.length?target.compatibleTypes:['GENERIC'];
+  const sourceType=source.connectionType||'GENERIC';
+  const targetType=target.connectionType||'GENERIC';
+  return sourceTypes.includes(targetType)&&targetTypes.includes(sourceType);
+}
+
+function validateAttachment(manifest:ModelManifest,action:Extract<EditorAction,{type:'ATTACH_COMPONENT'}>):ApplyFailure|undefined{
+  if(action.componentId===action.targetComponentId){
+    return {ok:false,code:'ATTACH_SELF',message:'A component cannot attach to itself.',action};
+  }
+  const sourceAnchor=manifest.anchors.find(item=>item.id===action.sourceAnchorId&&item.componentId===action.componentId);
+  const targetAnchor=manifest.anchors.find(item=>item.id===action.targetAnchorId&&item.componentId===action.targetComponentId);
+  if(!sourceAnchor||!targetAnchor){
+    return {ok:false,code:'ANCHOR_NOT_FOUND',message:'One or both attachment anchors do not exist in the active manifest.',action};
+  }
+  if(!anchorCompatible(sourceAnchor,targetAnchor)){
+    return {ok:false,code:'ANCHOR_INCOMPATIBLE',message:`${sourceAnchor.connectionType} is not compatible with ${targetAnchor.connectionType}.`,action};
+  }
+  return undefined;
 }
 
 function applyDependencyRules(before:ModelConfiguration,next:ModelConfiguration,manifest:ModelManifest,action:EditorAction){
@@ -69,6 +92,17 @@ function applyDependencyRules(before:ModelConfiguration,next:ModelConfiguration,
   }
 }
 
+function translateAttachedChildren(config:ModelConfiguration,targetComponentId:string,index:number,delta:number,visited=new Set<string>()){
+  if(Math.abs(delta)<1e-9||visited.has(targetComponentId))return;
+  visited.add(targetComponentId);
+  for(const attachment of config.attachments.filter(item=>item.targetComponentId===targetComponentId)){
+    const source=config.components[attachment.sourceComponentId];
+    if(!source)continue;
+    source.transform.position[index]+=delta;
+    translateAttachedChildren(config,attachment.sourceComponentId,index,delta,visited);
+  }
+}
+
 export function applyAction(rawAction:unknown,manifest:ModelManifest,input:ModelConfiguration,resources:EditorResources={}):ApplyResult{
   const parsed=EditorActionSchema.safeParse(rawAction);
   if(!parsed.success)return {ok:false,code:'INVALID_ACTION_SCHEMA',message:parsed.error.issues[0]?.message??'Invalid action.'};
@@ -76,6 +110,7 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
   const validation=validateAction(action,manifest,input);
   if(!validation.ok)return {...validation,action};
   const definition=manifest.components.find(item=>item.id===action.componentId)!;
+
   if(action.type==='SET_MATERIAL'){
     const material=resources.materials?.find(item=>item.id===action.materialId);
     if(!material)return {ok:false,code:'MATERIAL_NOT_FOUND',message:'Material ID is not available.',action};
@@ -86,27 +121,71 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
     if(!variant)return {ok:false,code:'VARIANT_NOT_FOUND',message:'Variant ID is not available.',action};
     if(!canApplyVariant(definition,variant))return {ok:false,code:'VARIANT_INCOMPATIBLE',message:'This variant is not compatible with the selected component.',action};
   }
+  if(action.type==='ATTACH_COMPONENT'){
+    const targetDefinition=manifest.components.find(item=>item.id===action.targetComponentId);
+    const targetState=input.components[action.targetComponentId];
+    if(!targetDefinition||!targetState||targetState.deleted||!targetState.visible){
+      return {ok:false,code:'ATTACH_TARGET_UNAVAILABLE',message:'Attachment target is not available.',action};
+    }
+    const failure=validateAttachment(manifest,action);
+    if(failure)return failure;
+  }
 
   const next=cloneConfiguration(input);
   const component=next.components[action.componentId];
+  const positionBefore=[...component.transform.position] as [number,number,number];
+
+  // Moving/rotating/resizing an attached source means the user is intentionally
+  // pulling it away. Drop the previous logical bond; a new snap can attach it again.
+  if(['SET_POSITION','SET_ROTATION','SET_DIMENSION','REPLACE_COMPONENT'].includes(action.type)){
+    next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId);
+  }
+
   switch(action.type){
     case 'SET_DIMENSION': component.dimensionsMm[componentAxis(action.axis)]=action.valueMm; break;
     case 'SET_MATERIAL': component.materialId=action.materialId; break;
     case 'SET_COLOR': component.color=action.color; break;
     case 'SET_VISIBILITY': component.visible=action.visible; break;
-    case 'DELETE_COMPONENT': component.deleted=true;component.visible=false; break;
+    case 'DELETE_COMPONENT':
+      component.deleted=true;component.visible=false;
+      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId&&item.targetComponentId!==action.componentId);
+      break;
     case 'RESTORE_COMPONENT': component.deleted=false;component.visible=true; break;
     case 'REPLACE_COMPONENT': component.variantId=action.variantId; break;
     case 'SET_POSITION': component.transform.position[{X:0,Y:1,Z:2}[action.axis]]=action.value; break;
     case 'SET_ROTATION': component.transform.rotation[{X:0,Y:1,Z:2}[action.axis]]=action.value; break;
+    case 'ATTACH_COMPONENT': {
+      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId);
+      next.attachments.push({
+        id:`att_${action.componentId}_${action.sourceAnchorId}_${action.targetComponentId}_${action.targetAnchorId}`,
+        sourceComponentId:action.componentId,
+        sourceAnchorId:action.sourceAnchorId,
+        targetComponentId:action.targetComponentId,
+        targetAnchorId:action.targetAnchorId,
+        createdBy:action.createdBy,
+      });
+      break;
+    }
+    case 'DETACH_COMPONENT':
+      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId);
+      break;
     case 'RESET_COMPONENT': {
       component.dimensionsMm=structuredClone(component.originalDimensionsMm);
       component.transform={position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};
       component.materialId=undefined;component.color=undefined;component.variantId=undefined;component.visible=true;component.deleted=false;
+      next.attachments=next.attachments.filter(item=>item.sourceComponentId!==action.componentId&&item.targetComponentId!==action.componentId);
       break;
     }
   }
+
   applyDependencyRules(input,next,manifest,action);
+
+  if(action.type==='SET_POSITION'){
+    const index={X:0,Y:1,Z:2}[action.axis];
+    const delta=component.transform.position[index]-positionBefore[index];
+    translateAttachedChildren(next,action.componentId,index,delta);
+  }
+
   return {ok:true,configuration:next,actions:[action]};
 }
 
