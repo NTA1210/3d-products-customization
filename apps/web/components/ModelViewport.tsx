@@ -11,6 +11,7 @@ import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {useDccViewportStore} from '../lib/dcc-viewport-store';
 import {useEditorStore} from '../lib/store';
 import {useMeasurementStore,type RuntimeMeasurement} from '../lib/measurement-store';
+import {useMultiSelectionStore} from '../lib/multi-selection-store';
 import {flattenComponentObjects,hasNestedComponentObjects} from '../lib/component-scene';
 import {demoMaterials} from '../lib/materials';
 import {resolveGroundBarrier} from '../lib/ground-barrier';
@@ -23,6 +24,7 @@ import {
   type RuntimeSnapCandidate,
 } from '../lib/anchor-runtime';
 import {reportViewerLoad} from '../lib/metrics';
+import {MultiSelectionTransformProxy,PlacementTransformProxy} from './TransformProxyControls';
 
 const MAX_REGION_COMPONENTS=32;
 const MAX_MODEL_COMPONENTS=96;
@@ -166,6 +168,7 @@ function worldPerPixel(camera:THREE.Camera,canvasHeight:number,point:THREE.Vecto
 function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const gltf=useGLTF(url);const camera=useThree(state=>state.camera);const canvasSize=useThree(state=>state.size);
   const{assetName,phase,manifest,configuration,selected,setPreparedAsset,select,setPlacementTransform,placementMode,componentMode,variants,dispatchBatch}=useEditorStore();
+  const selectedIds=useMultiSelectionStore(state=>state.ids);
   const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled),labelMode=useSnapInteractionStore(state=>state.labelMode),setCandidate=useSnapInteractionStore(state=>state.setCandidate),candidateState=useSnapInteractionStore(state=>state.candidate),setGroundBarrier=useSnapInteractionStore(state=>state.setGroundBarrier);
   const transformSpace=useDccViewportStore(state=>state.transformSpace),gridSnapEnabled=useDccViewportStore(state=>state.gridSnapEnabled),gridStepMm=useDccViewportStore(state=>state.gridStepMm),rotationSnapDeg=useDccViewportStore(state=>state.rotationSnapDeg),gizmoSize=useDccViewportStore(state=>state.gizmoSize),frameRequest=useDccViewportStore(state=>state.frameRequest),altNavigation=useDccViewportStore(state=>state.altNavigation);
   const modelId=useMemo(()=>`mdl_${(assetName||'asset').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase()}`,[assetName]);
@@ -179,6 +182,12 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   useEffect(()=>{if(loadReported.current||loadStartedAt<=0)return;loadReported.current=true;void reportViewerLoad(performance.now()-loadStartedAt);},[loadStartedAt]);
   useEffect(()=>{retainOwnedObject3D(prepared.scene);return()=>releaseOwnedObject3D(prepared.scene);},[prepared.scene]);
   useEffect(()=>{setCandidate(undefined);setGroundBarrier(undefined);snapCandidateRef.current=null;groundDragRef.current=null;},[selected,setCandidate,setGroundBarrier]);
+  useEffect(()=>{
+    const multi=useMultiSelectionStore.getState();
+    if(!selected){multi.clear();return;}
+    if(phase!=='EDITOR'||!configuration?.placement.locked){multi.setSingle(selected);return;}
+    if(!multi.ids.includes(selected))multi.setSingle(selected);
+  },[configuration?.placement.locked,phase,selected]);
   useEffect(()=>{
     if(!configuration||!manifest)return;
     prepared.scene.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;if(!id)return;const state=configuration.components[id];if(!state)return;const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);object.visible=state.visible&&!state.deleted&&!state.variantId;const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];for(const[index,material]of materials.entries()){if(!(material instanceof THREE.MeshStandardMaterial))continue;const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);}});
@@ -194,9 +203,10 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const candidateTarget=candidateState?findComponentObject(prepared.scene,candidateState.targetComponentId):undefined;
   const translationSnap=gridSnapEnabled?Math.max(gridStepMm/1000,1e-9):undefined;
   const rotationSnap=gridSnapEnabled?THREE.MathUtils.degToRad(rotationSnapDeg):undefined;
+  const isMultiSelection=Boolean(configuration?.placement.locked&&selectedIds.length>1);
 
   const updateSnapCandidate=useCallback(()=>{
-    if(!snapEnabled||componentMode!=='translate'||!manifest||!configuration||!selectedDefinition||!selectionTarget){snapCandidateRef.current=null;setCandidate(undefined);return;}
+    if(selectedIds.length>1||!snapEnabled||componentMode!=='translate'||!manifest||!configuration||!selectedDefinition||!selectionTarget){snapCandidateRef.current=null;setCandidate(undefined);return;}
     const candidate=findNearestAnchorCandidate({sourceComponentId:selectedDefinition.id,sourceObject:selectionTarget,manifest,configuration,objects});
     if(!candidate){snapCandidateRef.current=null;setCandidate(undefined);return;}
     const targetPoint=anchorWorldPosition(candidate.targetObject,candidate.targetAnchor);const perPixel=worldPerPixel(camera,canvasSize.height,targetPoint);const indicatorDistance=perPixel*NEAREST_INDICATOR_PIXELS;
@@ -204,7 +214,7 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     const ready=candidate.compatible&&candidate.distanceWorld<=perPixel*SNAP_PIXELS;
     snapCandidateRef.current={...candidate,ready};
     setCandidate({sourceComponentId:selectedDefinition.id,sourceAnchorId:candidate.sourceAnchor.id,sourceAnchorName:candidate.sourceAnchor.name??candidate.sourceAnchor.id,targetComponentId:candidate.targetComponentId,targetComponentName:candidate.targetComponentName,targetAnchorId:candidate.targetAnchor.id,targetAnchorName:candidate.targetAnchor.name??candidate.targetAnchor.id,gapMm:candidate.distanceWorld*1000,compatible:candidate.compatible,ready});
-  },[snapEnabled,componentMode,manifest,configuration,selectedDefinition,selectionTarget,objects,camera,canvasSize.height,setCandidate]);
+  },[selectedIds.length,snapEnabled,componentMode,manifest,configuration,selectedDefinition,selectionTarget,objects,camera,canvasSize.height,setCandidate]);
 
   const updateGroundBarrier=useCallback(()=>{
     const drag=groundDragRef.current;
@@ -221,15 +231,44 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
 
   const updateComponentDrag=useCallback(()=>{updateGroundBarrier();updateSnapCandidate();},[updateGroundBarrier,updateSnapCandidate]);
 
-  const model=<group ref={groupRef} onPointerDown={event=>{if(altNavigation)return;event.stopPropagation();let object:THREE.Object3D|null=event.object;while(object&&!object.userData.__componentId)object=object.parent;const id=object?.userData.__componentId as string|undefined;if(id)select(id);}}><primitive object={prepared.scene}/></group>;
-  const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible} showLabel={labelMode==='selected'}/>;
+  const model=<group ref={groupRef} onPointerDown={event=>{
+    if(altNavigation||event.button!==0)return;
+    event.stopPropagation();
+    let object:THREE.Object3D|null=event.object;
+    while(object&&!object.userData.__componentId)object=object.parent;
+    const id=object?.userData.__componentId as string|undefined;
+    if(!id)return;
+    const multi=useMultiSelectionStore.getState();
+    if(configuration?.placement.locked&&event.shiftKey){
+      const ids=multi.toggle(id);
+      select(ids.at(-1));
+    }else{
+      multi.setSingle(id);
+      select(id);
+    }
+  }}><primitive object={prepared.scene}/></group>;
+  const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible&&!isMultiSelection} showLabel={labelMode==='selected'}/>;
   const componentLabels=<ComponentLabels objects={objects} manifest={manifest} configuration={configuration} mode={labelMode} selected={selected}/>;
-  const proximity=candidateState?<ProximityIndicator target={candidateTarget} label={candidateState.targetComponentName} gapMm={candidateState.gapMm} compatible={candidateState.compatible} ready={candidateState.ready}/>:null;
-  const anchorMarkers=<AnchorMarkers target={selectionTarget} anchors={selectedAnchors} visible={Boolean(snapEnabled&&phase==='EDITOR'&&configuration?.placement.locked&&componentMode==='translate'&&selectionVisible)}/>;
+  const proximity=candidateState&&!isMultiSelection?<ProximityIndicator target={candidateTarget} label={candidateState.targetComponentName} gapMm={candidateState.gapMm} compatible={candidateState.compatible} ready={candidateState.ready}/>:null;
+  const anchorMarkers=<AnchorMarkers target={selectionTarget} anchors={selectedAnchors} visible={Boolean(!isMultiSelection&&snapEnabled&&phase==='EDITOR'&&configuration?.placement.locked&&componentMode==='translate'&&selectionVisible)}/>;
   const cameraController=<DccCameraController selectedTarget={selectionTarget} modelTarget={groupRef.current??undefined} request={frameRequest}/>;
-  if(phase==='EDITOR'&&!configuration?.placement.locked)return <><TransformControls mode={placementMode} space={transformSpace} size={gizmoSize} translationSnap={translationSnap} rotationSnap={rotationSnap} onObjectChange={()=>{const object=groupRef.current;if(!object)return;setPlacementTransform({position:object.position.toArray() as[number,number,number],rotation:[object.rotation.x,object.rotation.y,object.rotation.z],scale:object.scale.toArray() as[number,number,number]});}}>{model}</TransformControls>{indicator}{componentLabels}{cameraController}</>;
 
-  const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls
+  if(phase==='EDITOR'&&!configuration?.placement.locked)return <>
+    {model}
+    <PlacementTransformProxy
+      rootRef={groupRef}
+      mode={placementMode}
+      space={transformSpace}
+      size={gizmoSize}
+      translationSnap={translationSnap}
+      rotationSnap={rotationSnap}
+      onCommit={setPlacementTransform}
+    />
+    {componentLabels}
+    {cameraController}
+  </>;
+
+  const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&!isMultiSelection&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls
     object={selectionTarget}
     mode={componentMode}
     space={transformSpace}
@@ -267,7 +306,16 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
       dragRef.current=null;groundDragRef.current=null;snapCandidateRef.current=null;setCandidate(undefined);setGroundBarrier(undefined);if(actions.length)dispatchBatch(actions,snap?.ready?`Snap ${selectedDefinition.name} to ${snap.targetComponentName}`:`Direct ${componentMode} ${selectedDefinition.name}`);
     }}
   />:null;
-  return <>{model}{componentControls}{indicator}{componentLabels}{proximity}{anchorMarkers}{cameraController}</>;
+  const multiControls=phase==='EDITOR'&&configuration?.placement.locked&&isMultiSelection?<MultiSelectionTransformProxy
+    objects={objects}
+    selectedIds={selectedIds}
+    mode={componentMode}
+    space={transformSpace}
+    size={gizmoSize}
+    translationSnap={translationSnap}
+    rotationSnap={rotationSnap}
+  />:null;
+  return <>{model}{componentControls}{multiControls}{indicator}{componentLabels}{proximity}{anchorMarkers}{cameraController}</>;
 }
 
 function NavigationAids(){return <><Grid infiniteGrid followCamera args={[10,10]} cellSize={1} sectionSize={10} fadeDistance={100000} fadeStrength={1} fadeFrom={1} side={THREE.DoubleSide}/><axesHelper args={[10]}/><GizmoHelper alignment="bottom-right" margin={[80,80]}><GizmoViewport axisColors={['#e55757','#58b86b','#4b83e6']} labelColor="white"/></GizmoHelper></>;}
@@ -277,7 +325,7 @@ function DccOrbitControls(){
   const disabled=-1;
   const mouseButtons=altNavigation
     ?{LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.DOLLY}
-    :{LEFT:disabled,MIDDLE:disabled,RIGHT:disabled};
+    :{LEFT:disabled,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.ROTATE};
   return <OrbitControls
     makeDefault
     enableDamping
@@ -285,8 +333,8 @@ function DccOrbitControls(){
     screenSpacePanning
     minDistance={.02}
     maxDistance={250000}
-    enableRotate={altNavigation}
-    enablePan={altNavigation}
+    enableRotate
+    enablePan
     enableZoom
     mouseButtons={mouseButtons as never}
   />;
@@ -295,6 +343,10 @@ function DccOrbitControls(){
 export default function ModelViewport(){
   const assetUrl=useEditorStore(state=>state.assetUrl),resetSnap=useSnapInteractionStore(state=>state.reset);
   const loadStartedAt=useMemo(()=>assetUrl&&typeof performance!=='undefined'?performance.now():0,[assetUrl]);
-  useEffect(()=>{useMeasurementStore.getState().reset();resetSnap();},[assetUrl,resetSnap]);
-  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onContextMenu={event=>event.preventDefault()} onPointerMissed={()=>{if(!useDccViewportStore.getState().altNavigation)useEditorStore.getState().select(undefined);}}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><DccOrbitControls/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
+  useEffect(()=>{useMeasurementStore.getState().reset();resetSnap();useMultiSelectionStore.getState().clear();},[assetUrl,resetSnap]);
+  return <Canvas dpr={[1,2]} gl={{powerPreference:'high-performance'}} camera={{position:[4,3,5],fov:45,near:.01,far:1000000}} shadows onContextMenu={event=>event.preventDefault()} onPointerMissed={event=>{
+    if(event.button!==0||useDccViewportStore.getState().altNavigation)return;
+    useMultiSelectionStore.getState().clear();
+    useEditorStore.getState().select(undefined);
+  }}><ambientLight intensity={1.25}/><directionalLight position={[4,7,5]} intensity={2.2} castShadow/><NavigationAids/><DccOrbitControls/>{assetUrl?<Suspense fallback={null}><Bounds key={assetUrl} fit clip margin={1.2}><LoadedModel url={assetUrl} loadStartedAt={loadStartedAt}/></Bounds></Suspense>:null}</Canvas>;
 }
