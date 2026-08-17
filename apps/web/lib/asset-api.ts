@@ -51,6 +51,13 @@ const apiRoot = () =>
   `${(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')}/api`;
 
 function backendFailureMessage(response: Response, text: string) {
+  if (response.status === 413) {
+    return [
+      'Manifest quá lớn so với giới hạn JSON body của API (HTTP 413).',
+      'API hiện hỗ trợ manifest lớn hơn mặc định của Express; nếu vẫn gặp lỗi, tăng API_JSON_BODY_LIMIT rồi restart API.',
+    ].join(' ');
+  }
+
   const normalized = text.toLowerCase();
   const likelyInfrastructureFailure =
     response.status >= 500 ||
