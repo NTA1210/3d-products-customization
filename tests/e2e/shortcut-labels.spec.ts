@@ -46,18 +46,26 @@ test('component labels and keyboard shortcuts are user configurable',async({page
   await expect(page.getByText('Asset Preparation')).toBeVisible();
 
   const labelMode=page.getByLabel('Component label display');
+  const selectedLabel=page.getByTestId('selection-indicator');
+  const allLabels=page.getByTestId('component-label');
   await expect(labelMode).toHaveValue('selected');
   const firstName=(await page.locator('.component-card').first().locator('span').innerText()).trim();
-  await expect(page.locator('.viewer').getByText(firstName,{exact:true})).toBeVisible();
+  await expect(selectedLabel).toHaveText(firstName);
+  await expect(selectedLabel).toBeVisible();
+  await expect(allLabels.first()).toBeHidden();
 
   await page.keyboard.press('l');
   await expect(labelMode).toHaveValue('off');
+  await expect(selectedLabel).toBeHidden();
+  await expect(allLabels.first()).toBeHidden();
   await page.keyboard.press('l');
   await expect(labelMode).toHaveValue('selected');
+  await expect(selectedLabel).toBeVisible();
 
   await labelMode.selectOption('all');
   await expect(labelMode).toHaveValue('all');
-  await expect(page.getByTestId('component-label').first()).toBeVisible();
+  await expect(selectedLabel).toBeHidden();
+  await expect(allLabels.first()).toBeVisible();
 
   await page.getByRole('button',{name:'Keyboard shortcut settings'}).click();
   await expect(page.getByTestId('shortcut-settings')).toBeVisible();
@@ -69,10 +77,12 @@ test('component labels and keyboard shortcuts are user configurable',async({page
 
   await page.keyboard.press('Shift+L');
   await expect(labelMode).toHaveValue('off');
+  await expect(allLabels.first()).toBeHidden();
   await page.keyboard.press('l');
   await expect(labelMode).toHaveValue('off');
   await page.keyboard.press('Shift+L');
   await expect(labelMode).toHaveValue('all');
+  await expect(allLabels.first()).toBeVisible();
 
   await page.getByRole('button',{name:'Bật Kích thước + Màu/Vật liệu'}).click();
   await page.getByRole('button',{name:'Save Manifest & Open Editor'}).click();
