@@ -41,6 +41,35 @@ function executeShortcut(action:ShortcutAction){
     case'focusSelected':if(editor.selected)dcc.requestFrame('selected');return;
     case'frameAll':dcc.requestFrame('all');return;
     case'toggleGridSnap':dcc.toggleGridSnap();return;
+    case'hideSelected':{
+      if(editor.phase!=='EDITOR'||!editor.selected)return;
+      const state=editor.configuration?.components[editor.selected];
+      if(!state||state.deleted||!state.visible)return;
+      editor.dispatch({type:'SET_VISIBILITY',componentId:editor.selected,visible:false,source:'MANUAL'},'Hide selected component');
+      return;
+    }
+    case'isolateSelected':{
+      if(editor.phase!=='EDITOR'||!editor.selected||!editor.configuration||!editor.manifest)return;
+      const actions=editor.manifest.components.flatMap(definition=>{
+        const state=editor.configuration?.components[definition.id];
+        if(!state||state.deleted)return[];
+        const visible=definition.id===editor.selected;
+        if(state.visible===visible)return[];
+        return[{type:'SET_VISIBILITY' as const,componentId:definition.id,visible,source:'MANUAL' as const}];
+      });
+      if(actions.length)editor.dispatchBatch(actions,'Isolate selected component');
+      return;
+    }
+    case'showAll':{
+      if(editor.phase!=='EDITOR'||!editor.configuration||!editor.manifest)return;
+      const actions=editor.manifest.components.flatMap(definition=>{
+        const state=editor.configuration?.components[definition.id];
+        if(!state||state.deleted||state.visible)return[];
+        return[{type:'SET_VISIBILITY' as const,componentId:definition.id,visible:true,source:'MANUAL' as const}];
+      });
+      if(actions.length)editor.dispatchBatch(actions,'Show all components');
+      return;
+    }
     case'toggleLabels':snap.toggleLabels();return;
     case'toggleSnap':snap.toggleSnap();return;
     case'gizmoIncrease':dcc.increaseGizmo();return;
