@@ -72,6 +72,12 @@ function executeShortcut(action:ShortcutAction){
     }
     case'toggleLabels':snap.toggleLabels();return;
     case'toggleSnap':snap.toggleSnap();return;
+    case'toggleAttach':{
+      if(editor.phase!=='EDITOR'||!editor.configuration?.placement.locked||!editor.selected)return;
+      editor.setComponentMode('translate');
+      snap.toggleAttachMode();
+      return;
+    }
     case'gizmoIncrease':dcc.increaseGizmo();return;
     case'gizmoDecrease':dcc.decreaseGizmo();return;
     case'deleteSelected':{
@@ -101,9 +107,16 @@ export default function KeyboardShortcuts(){
 
   useEffect(()=>{
     const setAlt=(active:boolean)=>useDccViewportStore.getState().setAltNavigation(active);
-    const down=(event:KeyboardEvent)=>{if(event.key==='Alt')setAlt(true);};
-    const up=(event:KeyboardEvent)=>{if(event.key==='Alt')setAlt(false);};
-    const blur=()=>setAlt(false);
+    const setTemporarySnap=(active:boolean)=>useSnapInteractionStore.getState().setTemporarySnap(active);
+    const down=(event:KeyboardEvent)=>{
+      if(event.key==='Alt')setAlt(true);
+      if(event.key==='Control')setTemporarySnap(true);
+    };
+    const up=(event:KeyboardEvent)=>{
+      if(event.key==='Alt')setAlt(false);
+      if(event.key==='Control')setTemporarySnap(false);
+    };
+    const blur=()=>{setAlt(false);setTemporarySnap(false);};
     window.addEventListener('keydown',down,{capture:true});
     window.addEventListener('keyup',up,{capture:true});
     window.addEventListener('blur',blur);
@@ -111,7 +124,7 @@ export default function KeyboardShortcuts(){
       window.removeEventListener('keydown',down,{capture:true});
       window.removeEventListener('keyup',up,{capture:true});
       window.removeEventListener('blur',blur);
-      setAlt(false);
+      setAlt(false);setTemporarySnap(false);
     };
   },[]);
 
@@ -138,6 +151,12 @@ export default function KeyboardShortcuts(){
         return;
       }
       if(settingsOpen||isEditableKeyboardTarget(event.target))return;
+      if(event.key==='Escape'&&useSnapInteractionStore.getState().attachMode){
+        event.preventDefault();
+        useSnapInteractionStore.getState().setAttachMode(false);
+        useSnapInteractionStore.getState().setCandidate(undefined);
+        return;
+      }
       const definition=SHORTCUT_DEFINITIONS.find(item=>shortcutMatches(event,bindings[item.action]));
       if(!definition)return;
       event.preventDefault();
@@ -172,6 +191,7 @@ export default function KeyboardShortcuts(){
         {activePreset==='custom'&&<span>Custom keymap</span>}
       </div>
 
+      <div className="shortcut-notice">Giữ <b>Ctrl</b> trong lúc Move để bật Anchor Snap tạm thời. Snap chỉ căn vị trí; dùng <b>Attach mode</b> nếu muốn tạo relationship.</div>
       {notice&&<div className="shortcut-notice">{notice}</div>}
 
       <div className="shortcut-table" role="table" aria-label="Keyboard shortcut configuration">
@@ -199,7 +219,7 @@ export default function KeyboardShortcuts(){
       </div>
 
       <div className="dialog-footer">
-        <span>Esc hủy record · Shortcut không chạy khi bạn đang nhập text.</span>
+        <span>Esc hủy record / Attach mode · Shortcut không chạy khi bạn đang nhập text.</span>
         <div>
           <button type="button" onClick={()=>{resetDefaults();setNotice('Đã khôi phục Maya / Standard DCC defaults.');}}>Reset defaults</button>
           <button className="primary" type="button" onClick={closeSettings}>Done</button>

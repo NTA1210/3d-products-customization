@@ -22,8 +22,11 @@ export default function WorkspaceToolbar(){
   const dispatchBatch=useEditorStore(state=>state.dispatchBatch);
   const setPlacementMode=useEditorStore(state=>state.setPlacementMode);
   const setComponentMode=useEditorStore(state=>state.setComponentMode);
-  const snapEnabled=useSnapInteractionStore(state=>state.snapEnabled);
+  const persistentSnapEnabled=useSnapInteractionStore(state=>state.persistentSnapEnabled);
+  const temporarySnapActive=useSnapInteractionStore(state=>state.temporarySnapActive);
+  const attachMode=useSnapInteractionStore(state=>state.attachMode);
   const toggleSnap=useSnapInteractionStore(state=>state.toggleSnap);
+  const toggleAttachMode=useSnapInteractionStore(state=>state.toggleAttachMode);
   const labelMode=useSnapInteractionStore(state=>state.labelMode);
   const setLabelMode=useSnapInteractionStore(state=>state.setLabelMode);
   const transformSpace=useDccViewportStore(state=>state.transformSpace);
@@ -49,6 +52,7 @@ export default function WorkspaceToolbar(){
   const definition=manifest?.components.find(item=>item.id===selected);
   const selectedState=selected?configuration?.components[selected]:undefined;
   const canScale=Boolean(locked&&definition?.editable&&definition.scalingMode==='AXIS_SCALE'&&Object.values(definition.editableAxes).some(Boolean));
+  const canAttach=Boolean(locked&&selected&&definition?.editable&&selectedState?.visible&&!selectedState?.deleted);
   const activeMode=locked?componentMode:placementMode;
   const setMode=(mode:'translate'|'rotate'|'scale')=>{
     if(!locked){if(mode!=='scale')setPlacementMode(mode);return;}
@@ -75,6 +79,11 @@ export default function WorkspaceToolbar(){
       return[{type:'SET_VISIBILITY' as const,componentId:item.id,visible:true,source:'MANUAL' as const}];
     });
     if(actions.length)dispatchBatch(actions,'Show all components');
+  };
+  const toggleAttach=()=>{
+    if(!canAttach)return;
+    if(!attachMode)setComponentMode('translate');
+    toggleAttachMode();
   };
 
   return <div className="viewport-toolbar dcc-toolbar" data-testid="viewport-toolbar">
@@ -110,17 +119,23 @@ export default function WorkspaceToolbar(){
         </select>
       </label>
 
-      <button type="button" aria-label="Grid transform snap" className={`tool-button compact ${gridSnapEnabled?'active':''}`} aria-pressed={gridSnapEnabled} onClick={toggleGridSnap} title={`Grid transform snap · ${key('toggleGridSnap')}`}>
-        <span className="tool-icon">#</span><span>Grid</span><kbd>{key('toggleGridSnap')}</kbd>
-      </button>
-      {gridSnapEnabled&&<div className="toolbar-snap-step" title="Translation snap step">
-        <input aria-label="Grid snap step mm" type="number" min="0.001" step="1" value={gridStepMm} onChange={event=>setGridStepMm(Number(event.target.value))}/><span>mm</span>
-        <input aria-label="Rotation snap step degrees" type="number" min="0.1" max="180" step="1" value={rotationSnapDeg} onChange={event=>setRotationSnapDeg(Number(event.target.value))}/><span>°</span>
-      </div>}
+      <div className="toolbar-group snap-tools" aria-label="Snap and assembly tools">
+        <button type="button" aria-label="Grid transform snap" className={`tool-button compact ${gridSnapEnabled?'active':''}`} aria-pressed={gridSnapEnabled} onClick={toggleGridSnap} title={`Grid transform snap · ${key('toggleGridSnap')}`}>
+          <span className="tool-icon">#</span><span>Grid</span><kbd>{key('toggleGridSnap')}</kbd>
+        </button>
+        {gridSnapEnabled&&<div className="toolbar-snap-step" title="Translation snap step">
+          <input aria-label="Grid snap step mm" type="number" min="0.001" step="1" value={gridStepMm} onChange={event=>setGridStepMm(Number(event.target.value))}/><span>mm</span>
+          <input aria-label="Rotation snap step degrees" type="number" min="0.1" max="180" step="1" value={rotationSnapDeg} onChange={event=>setRotationSnapDeg(Number(event.target.value))}/><span>°</span>
+        </div>}
 
-      <button type="button" aria-label="Anchor magnetic snap" className={`tool-button compact ${snapEnabled?'active':''}`} aria-pressed={snapEnabled} onClick={toggleSnap} title={`Anchor Magnetic Snap · ${key('toggleSnap')}`}>
-        <span className="tool-icon">⌁</span><span>Anchor</span><kbd>{key('toggleSnap')}</kbd>
-      </button>
+        <button type="button" aria-label="Anchor positioning snap" className={`tool-button compact ${persistentSnapEnabled?'active':''} ${temporarySnapActive?'temporary':''}`} aria-pressed={persistentSnapEnabled} onClick={toggleSnap} title={`Anchor position snap · ${key('toggleSnap')} · Hold Ctrl for temporary snap`}>
+          <span className="tool-icon">⌁</span><span>Snap</span><kbd>{key('toggleSnap')}</kbd>
+        </button>
+        <button type="button" aria-label="Attach mode" className={`tool-button compact ${attachMode?'active':''}`} aria-pressed={attachMode} disabled={!canAttach} onClick={toggleAttach} title={`Attach mode · ${key('toggleAttach')} · creates a persistent assembly relationship`}>
+          <span className="tool-icon">⛓</span><span>Attach</span><kbd>{key('toggleAttach')}</kbd>
+        </button>
+        <span className="gizmo-scale-value" title="Hold Ctrl while moving for temporary anchor positioning snap">{temporarySnapActive?'Ctrl snap':'Ctrl · temp'}</span>
+      </div>
 
       <span className="toolbar-divider"/>
       <div className="toolbar-group camera-tools">

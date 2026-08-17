@@ -28,12 +28,22 @@ export type GroundBarrierState={
 };
 
 type SnapInteractionStore={
+  /** Resolved assist state consumed by the viewport. */
   snapEnabled:boolean;
+  /** Persistent magnetic positioning requested by the user. */
+  persistentSnapEnabled:boolean;
+  /** Temporary Ctrl-held positioning assist. */
+  temporarySnapActive:boolean;
+  /** Explicit assembly intent. A successful snap may create ATTACH_COMPONENT only in this mode. */
+  attachMode:boolean;
   labelMode:LabelMode;
   lastVisibleLabelMode:Exclude<LabelMode,'off'>;
   candidate?:SnapCandidateState;
   groundBarrier?:GroundBarrierState;
   toggleSnap:()=>void;
+  setTemporarySnap:(active:boolean)=>void;
+  toggleAttachMode:()=>void;
+  setAttachMode:(active:boolean)=>void;
   toggleLabels:()=>void;
   setLabelMode:(mode:LabelMode)=>void;
   setCandidate:(candidate?:SnapCandidateState)=>void;
@@ -41,13 +51,45 @@ type SnapInteractionStore={
   reset:()=>void;
 };
 
+function resolvedSnap(persistentSnapEnabled:boolean,temporarySnapActive:boolean,attachMode:boolean){
+  return persistentSnapEnabled||temporarySnapActive||attachMode;
+}
+
 export const useSnapInteractionStore=create<SnapInteractionStore>((set)=>({
-  snapEnabled:true,
+  snapEnabled:false,
+  persistentSnapEnabled:false,
+  temporarySnapActive:false,
+  attachMode:false,
   labelMode:'selected',
   lastVisibleLabelMode:'selected',
   candidate:undefined,
   groundBarrier:undefined,
-  toggleSnap:()=>set(state=>({snapEnabled:!state.snapEnabled,candidate:undefined})),
+  toggleSnap:()=>set(state=>{
+    const persistentSnapEnabled=!state.persistentSnapEnabled;
+    return{
+      persistentSnapEnabled,
+      snapEnabled:resolvedSnap(persistentSnapEnabled,state.temporarySnapActive,state.attachMode),
+      candidate:undefined,
+    };
+  }),
+  setTemporarySnap:temporarySnapActive=>set(state=>({
+    temporarySnapActive,
+    snapEnabled:resolvedSnap(state.persistentSnapEnabled,temporarySnapActive,state.attachMode),
+    ...(!temporarySnapActive&&!state.persistentSnapEnabled&&!state.attachMode?{candidate:undefined}:{}),
+  })),
+  toggleAttachMode:()=>set(state=>{
+    const attachMode=!state.attachMode;
+    return{
+      attachMode,
+      snapEnabled:resolvedSnap(state.persistentSnapEnabled,state.temporarySnapActive,attachMode),
+      candidate:undefined,
+    };
+  }),
+  setAttachMode:attachMode=>set(state=>({
+    attachMode,
+    snapEnabled:resolvedSnap(state.persistentSnapEnabled,state.temporarySnapActive,attachMode),
+    ...(!attachMode&&!state.persistentSnapEnabled&&!state.temporarySnapActive?{candidate:undefined}:{}),
+  })),
   toggleLabels:()=>set(state=>state.labelMode==='off'
     ?{labelMode:state.lastVisibleLabelMode}
     :{labelMode:'off',lastVisibleLabelMode:state.labelMode}),
@@ -56,5 +98,10 @@ export const useSnapInteractionStore=create<SnapInteractionStore>((set)=>({
     :{labelMode:mode,lastVisibleLabelMode:mode}),
   setCandidate:candidate=>set({candidate}),
   setGroundBarrier:groundBarrier=>set({groundBarrier}),
-  reset:()=>set({candidate:undefined,groundBarrier:undefined}),
+  reset:()=>set(state=>({
+    candidate:undefined,
+    groundBarrier:undefined,
+    temporarySnapActive:false,
+    snapEnabled:resolvedSnap(state.persistentSnapEnabled,false,state.attachMode),
+  })),
 }));

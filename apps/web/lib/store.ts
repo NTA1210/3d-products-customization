@@ -16,6 +16,7 @@ import type {PresetRule} from '@product3d/preset-engine';
 import {applyPresetRules} from '@product3d/preset-engine';
 import {applyAction,applyActions} from '@product3d/editor-core';
 import {demoMaterials} from './materials';
+import {useSnapInteractionStore} from './snap-store';
 import type {RuntimeVariant} from './catalog-api';
 
 type Phase='EMPTY'|'PREPARE'|'EDITOR';
@@ -196,10 +197,15 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
   dispatchBatch:(actions,label)=>{
     const state=get();
     if(!state.manifest||!state.configuration||!actions.length)return false;
+    const snapIntent=useSnapInteractionStore.getState();
+    const hasSnapAttachment=actions.some(action=>action.type==='ATTACH_COMPONENT'&&action.createdBy==='SNAP');
+    const resolvedActions=actions.filter(action=>action.type!=='ATTACH_COMPONENT'||action.createdBy!=='SNAP'||snapIntent.attachMode);
+    if(!resolvedActions.length)return false;
     const before=structuredClone(state.configuration);
-    const result=applyActions(actions,state.manifest,state.configuration,{materials:demoMaterials,variants:Object.values(state.variants)});
+    const result=applyActions(resolvedActions,state.manifest,state.configuration,{materials:demoMaterials,variants:Object.values(state.variants)});
     if(!result.ok){set({error:result.message});return false;}
     set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label}],redoStack:[],error:undefined});
+    if(hasSnapAttachment&&snapIntent.attachMode)useSnapInteractionStore.getState().setAttachMode(false);
     return true;
   },
   applyRules:(rules,source,label,id)=>{

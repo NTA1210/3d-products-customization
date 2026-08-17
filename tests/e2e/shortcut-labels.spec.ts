@@ -71,6 +71,7 @@ test('component labels, DCC tools and keyboard shortcuts are user configurable',
   await expect(page.getByTestId('shortcut-settings')).toBeVisible();
   await expect(page.getByRole('button',{name:'Maya / Standard'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Blender style'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Change shortcut for Attach mode'})).toBeVisible();
   await page.getByRole('button',{name:'Change shortcut for Component labels'}).click();
   await page.keyboard.press('Shift+L');
   await expect(page.getByText(/Component labels =/)).toBeVisible();
@@ -103,6 +104,27 @@ test('component labels, DCC tools and keyboard shortcuts are user configurable',
   await expect(gridSnap).toHaveAttribute('aria-pressed','true');
   await expect(page.getByLabel('Grid snap step mm')).toHaveValue('100');
   await expect(page.getByLabel('Rotation snap step degrees')).toHaveValue('15');
+
+  const anchorSnap=page.getByRole('button',{name:'Anchor positioning snap'});
+  const attachMode=page.getByRole('button',{name:'Attach mode'});
+  await expect(anchorSnap).toHaveAttribute('aria-pressed','false');
+  await expect(attachMode).toHaveAttribute('aria-pressed','false');
+  await page.keyboard.press('s');
+  await expect(anchorSnap).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.press('s');
+  await expect(anchorSnap).toHaveAttribute('aria-pressed','false');
+
+  await page.keyboard.down('Control');
+  await expect(page.getByText('Ctrl snap',{exact:true})).toBeVisible();
+  await expect(anchorSnap).toHaveAttribute('aria-pressed','false');
+  await page.keyboard.up('Control');
+  await expect(page.getByText('Ctrl · temp',{exact:true})).toBeVisible();
+
+  await page.keyboard.press('j');
+  await expect(attachMode).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByTestId('attach-mode-armed')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(attachMode).toHaveAttribute('aria-pressed','false');
 
   await page.keyboard.press('f');
   await page.keyboard.press('Home');
