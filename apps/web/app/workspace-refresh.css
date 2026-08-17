@@ -1,0 +1,14 @@
+.workspace-controls{display:flex;align-items:flex-end;gap:8px;min-width:0}
+.workspace-group{display:flex;align-items:center;gap:5px;min-width:0;position:relative;padding-top:11px}
+.workspace-group-label{position:absolute;top:-1px;left:3px;color:#5f7187;font-size:8px;line-height:1;text-transform:uppercase;letter-spacing:.12em;font-weight:800}
+.workspace-controls select{height:34px;max-width:150px;padding:6px 24px 6px 8px;border:1px solid #283647;border-radius:7px;background:#0e1721;color:#cbd7e3;font-size:10px}
+.workspace-nav select:first-of-type{max-width:170px}
+.workspace-project-actions{padding-left:8px;border-left:1px solid #273546}
+.export-control{display:flex;align-items:center}
+.export-control select{width:76px;border-radius:7px 0 0 7px;border-right:0}
+.export-control button{border-radius:0 7px 7px 0}
+.workspace-signin-hint{font-size:10px}
+/* Undo/Redo live next to the viewport now; keep project/import actions in the global header. */
+.top-actions>button:nth-of-type(2),.top-actions>button:nth-of-type(3){display:none}
+@media(max-width:1500px){.workspace-group-label{display:none}.workspace-group{padding-top:0}.workspace-controls{gap:5px}.workspace-project-actions{padding-left:5px}.workspace-controls button{padding-left:7px;padding-right:7px}}
+@media(max-width:1100px){.workspace-controls{max-width:100%;overflow-x:auto}.workspace-controls select{min-width:120px}}
