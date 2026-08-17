@@ -79,13 +79,16 @@ test('Import → prepare → select on model → lock → customize → undo/red
   await expect(page.locator('.component-card').first()).toBeVisible();
 
   const firstComponentName=(await page.locator('.component-card').first().locator('span').innerText()).trim();
-  await expect(page.locator('.viewer').getByText(firstComponentName,{exact:true})).toBeVisible();
+  await expect(page.getByTestId('selection-indicator')).toHaveText(firstComponentName);
+  await expect(page.getByTestId('selection-indicator')).toBeVisible();
   const secondComponent=page.locator('.component-card').nth(1);
   const secondComponentName=(await secondComponent.locator('span').innerText()).trim();
   await secondComponent.click();
-  await expect(page.locator('.viewer').getByText(secondComponentName,{exact:true})).toBeVisible();
+  await expect(page.getByTestId('selection-indicator')).toHaveText(secondComponentName);
+  await expect(page.getByTestId('selection-indicator')).toBeVisible();
   await page.locator('.component-card').first().click();
-  await expect(page.locator('.viewer').getByText(firstComponentName,{exact:true})).toBeVisible();
+  await expect(page.getByTestId('selection-indicator')).toHaveText(firstComponentName);
+  await expect(page.getByTestId('selection-indicator')).toBeVisible();
 
   await expect(page.getByText(/2 non-blocking model note\(s\) hidden/)).toBeVisible();
   await expect(page.getByText('Root scale review note.')).toHaveCount(0);
