@@ -55,6 +55,12 @@ body{background:var(--editor-bg);color:var(--editor-text)}
 .segmented button.active{background:#dbe9f8;color:#101822;border-color:#dbe9f8}
 .status{height:34px;background:#0b1119;border-color:var(--editor-border);color:#74859a}
 
+/* drei Html is a DOM portal. These rules are the authoritative text-label switch. */
+body[data-component-labels='selected'] [data-testid='component-label'],
+body[data-component-labels='all'] [data-testid='selection-indicator'],
+body[data-component-labels='off'] [data-testid='component-label'],
+body[data-component-labels='off'] [data-testid='selection-indicator']{display:none!important}
+
 .viewport-toolbar{
   position:fixed;
   top:78px;
