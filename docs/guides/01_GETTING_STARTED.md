@@ -86,9 +86,11 @@ Web / API / Workers local
 
 ## 5. Chuẩn bị Prisma và Storage
 
+Khi **clone/pull source và chỉ cần áp dụng các migration đã commit trong repo** vào Supabase Database, dùng `migrate deploy`:
+
 ```bash
 pnpm --filter @product3d/api prisma:generate
-pnpm --filter @product3d/api prisma:migrate
+pnpm --filter @product3d/api prisma:deploy
 pnpm --filter @product3d/api storage:setup
 pnpm --filter @product3d/api prisma:seed
 ```
@@ -96,9 +98,19 @@ pnpm --filter @product3d/api prisma:seed
 Ý nghĩa:
 
 - `prisma:generate`: tạo Prisma Client.
-- `prisma:migrate`: áp dụng migration vào Supabase Database qua `DATABASE_URL`.
+- `prisma:deploy`: áp dụng các migration đã commit vào Supabase Database, không tạo migration mới và không cần shadow database.
 - `storage:setup`: tạo/xác minh private Supabase bucket.
 - `prisma:seed`: tạo dữ liệu seed cho material/style/variant/catalog/demo cần thiết.
+
+Chỉ dùng lệnh sau khi **chủ động thay đổi `schema.prisma` và cần tạo migration mới trong quá trình development**:
+
+```bash
+pnpm --filter @product3d/api prisma:migrate
+```
+
+`prisma:migrate` chạy `prisma migrate dev`; không dùng nó như lệnh cập nhật database thông thường sau `git pull`.
+
+Nếu Prisma báo `P3015 Could not find the migration file`, kiểm tra thư mục migration local trước khi seed. Một thư mục migration rỗng/local không có `migration.sql` sẽ chặn toàn bộ migration chain. Xem mục Prisma trong [Xử lý sự cố](10_TROUBLESHOOTING.md).
 
 Sau migration, có thể mở Supabase Dashboard → **Table Editor** để kiểm tra các bảng đã được tạo.
 
