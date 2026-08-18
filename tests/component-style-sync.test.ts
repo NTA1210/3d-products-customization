@@ -32,7 +32,7 @@ describe('exact component label style sync',()=>{
     expect(exactLabelStyleGroup(value,'empty-a').map(item=>item.id)).toEqual(['empty-a']);
   });
 
-  it('expands manual material/color/variant edits but never transform edits',()=>{
+  it('expands manual material/color edits but keeps geometry edits independent',()=>{
     const value=manifest(component('left',['wing']),component('right',['WING']),component('body',['body']));
     const color=expandManualStyleSyncAction({type:'SET_COLOR',componentId:'left',color:'#112233',source:'MANUAL'},value);
     expect(color.map(action=>action.componentId)).toEqual(['left','right']);
@@ -42,7 +42,8 @@ describe('exact component label style sync',()=>{
     expect(material.map(action=>action.componentId)).toEqual(['left','right']);
 
     const variant=expandManualStyleSyncAction({type:'REPLACE_COMPONENT',componentId:'left',variantId:'wing-v2',source:'MANUAL'},value);
-    expect(variant.map(action=>action.componentId)).toEqual(['left','right']);
+    expect(variant).toHaveLength(1);
+    expect(variant[0].componentId).toBe('left');
 
     const move=expandManualStyleSyncAction({type:'SET_POSITION',componentId:'left',axis:'X',value:100,source:'MANUAL'},value);
     expect(move).toHaveLength(1);
