@@ -19,6 +19,19 @@ export const CollectionExplanationResponseSchema=z.object({
 });
 export type CollectionExplanationResponse=z.infer<typeof CollectionExplanationResponseSchema>;
 
+export const VisualizationConsistencyResponseSchema=z.object({
+  summary:z.string().min(1),
+  shapeScore:z.number().min(0).max(1),
+  componentScore:z.number().min(0).max(1),
+  materialColorScore:z.number().min(0).max(1),
+  observations:z.array(z.object({
+    category:z.enum(['SHAPE','COMPONENT_STRUCTURE','MATERIAL_COLOR','OCCLUSION']),
+    severity:z.enum(['INFO','WARNING']),
+    message:z.string().min(1),
+  })).max(12),
+});
+export type VisualizationConsistencyResponse=z.infer<typeof VisualizationConsistencyResponseSchema>;
+
 const MANUFACTURING_VISION_JSON_SCHEMA={
   type:'object',additionalProperties:false,required:['summary','visualObservations','explanations'],properties:{
     summary:{type:'string'},
@@ -31,6 +44,16 @@ const COLLECTION_EXPLANATION_JSON_SCHEMA={
   type:'object',additionalProperties:false,required:['summary','explanations'],properties:{
     summary:{type:'string'},
     explanations:{type:'array',maxItems:20,items:{type:'object',additionalProperties:false,required:['productId','explanation'],properties:{productId:{type:'string'},explanation:{type:'string'}}}},
+  },
+} as const;
+
+const VISUALIZATION_CONSISTENCY_JSON_SCHEMA={
+  type:'object',additionalProperties:false,required:['summary','shapeScore','componentScore','materialColorScore','observations'],properties:{
+    summary:{type:'string'},
+    shapeScore:{type:'number',minimum:0,maximum:1},
+    componentScore:{type:'number',minimum:0,maximum:1},
+    materialColorScore:{type:'number',minimum:0,maximum:1},
+    observations:{type:'array',maxItems:12,items:{type:'object',additionalProperties:false,required:['category','severity','message'],properties:{category:{type:'string',enum:['SHAPE','COMPONENT_STRUCTURE','MATERIAL_COLOR','OCCLUSION']},severity:{type:'string',enum:['INFO','WARNING']},message:{type:'string'}}}},
   },
 } as const;
 
@@ -69,5 +92,9 @@ export class AiProviderService{
 
   async collectionExplanation(input:VisionProviderInput):Promise<AiProviderResult>{
     return this.structured(input,{model:process.env.OPENAI_COLLECTION_MODEL??process.env.OPENAI_DESIGN_MODEL??'gpt-5-mini',schema:COLLECTION_EXPLANATION_JSON_SCHEMA,schemaName:'collection_recommendation_explanation',event:'collection_explanation_request',parse:value=>CollectionExplanationResponseSchema.parse(value)});
+  }
+
+  async visualizationConsistency(input:VisionProviderInput):Promise<AiProviderResult>{
+    return this.structured(input,{model:process.env.OPENAI_VISUALIZATION_REVIEW_MODEL??process.env.OPENAI_DESIGN_MODEL??'gpt-5-mini',schema:VISUALIZATION_CONSISTENCY_JSON_SCHEMA,schemaName:'visualization_consistency_review',event:'visualization_consistency_request',parse:value=>VisualizationConsistencyResponseSchema.parse(value)});
   }
 }
