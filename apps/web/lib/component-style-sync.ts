@@ -1,7 +1,7 @@
 import type {EditorAction} from '@product3d/action-engine';
 import type {ComponentManifest,ModelManifest} from '@product3d/model-schema';
 
-const STYLE_SYNC_ACTION_TYPES=new Set<EditorAction['type']>(['SET_MATERIAL','SET_COLOR','REPLACE_COMPONENT']);
+const STYLE_SYNC_ACTION_TYPES=new Set<EditorAction['type']>(['SET_MATERIAL','SET_COLOR']);
 
 export function normalizeComponentLabels(labels:readonly string[]|undefined):string[]{
   return [...new Set((labels??[]).map(label=>label.trim().toLowerCase()).filter(Boolean))].sort();
