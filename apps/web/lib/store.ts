@@ -18,6 +18,7 @@ import {applyAction,applyActions} from '@product3d/editor-core';
 import {demoMaterials} from './materials';
 import {useSnapInteractionStore} from './snap-store';
 import type {RuntimeVariant} from './catalog-api';
+import {resetProductConfiguration} from './configuration-presets';
 
 type Phase='EMPTY'|'PREPARE'|'EDITOR';
 type TransformMode='translate'|'rotate'|'scale';
@@ -76,6 +77,8 @@ type EditorStore={
   dispatch:(a:EditorAction,l?:string)=>boolean;
   dispatchBatch:(actions:EditorAction[],label:string)=>boolean;
   applyRules:(rules:PresetRule[],source:'STYLE'|'PRESET',label:string,id?:string)=>boolean;
+  resetModel:()=>boolean;
+  resetPreset:(rules:PresetRule[],id:string,label?:string)=>boolean;
   undo:()=>void;
   redo:()=>void;
   clearError:()=>void;
@@ -216,6 +219,25 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     if(!result.ok){set({error:result.message});return false;}
     const configuration={...result.configuration,...(source==='STYLE'?{appliedStyleId:id}:{appliedPresetId:id})};
     set({configuration,undoStack:[...state.undoStack,{configuration:before,label}],redoStack:[],error:undefined});
+    return true;
+  },
+  resetModel:()=>{
+    const state=get();
+    if(!state.configuration)return false;
+    const before=structuredClone(state.configuration);
+    const configuration=resetProductConfiguration(state.configuration);
+    set({configuration,undoStack:[...state.undoStack,{configuration:before,label:'Reset product'}],redoStack:[],error:undefined});
+    return true;
+  },
+  resetPreset:(rules,id,label)=>{
+    const state=get();
+    if(!state.manifest||!state.configuration)return false;
+    const before=structuredClone(state.configuration);
+    const baseline=resetProductConfiguration(state.configuration);
+    const result=applyPresetRules(rules,'PRESET',state.manifest,baseline,{materials:demoMaterials,variants:Object.values(state.variants)});
+    if(!result.ok){set({error:result.message});return false;}
+    const configuration={...result.configuration,appliedPresetId:id};
+    set({configuration,undoStack:[...state.undoStack,{configuration:before,label:label??'Reset preset'}],redoStack:[],error:undefined});
     return true;
   },
   undo:()=>set(state=>{
