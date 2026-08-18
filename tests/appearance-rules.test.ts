@@ -53,12 +53,13 @@ describe('component attribute appearance rules',()=>{
     expect(appearanceRuleMembers(value,leftOnly).map(item=>item.id)).toEqual(['left']);
   });
 
-  it('unions only rules matched by the source and respects per-channel scope',()=>{
+  it('unions only rules matched by the source, respects channels, and never chains through target-only rules',()=>{
     const left=component('left',{part:'wing',side:'left',surface:'exterior'});
     const right=component('right',{part:'wing',side:'right',surface:'exterior'});
     const stabilizer=component('stabilizer',{part:'stabilizer',surface:'exterior'});
+    const rightDetail=component('right-detail',{part:'inspection-panel',side:'right',surface:'interior'});
     const cabin=component('cabin',{part:'cabin',surface:'interior'});
-    const value=manifest([left,right,stabilizer,cabin],[
+    const value=manifest([left,right,stabilizer,rightDetail,cabin],[
       rule('wing-surface',{part:'wing'},['MATERIAL','COLOR']),
       rule('aircraft-paint',{surface:'exterior'},['COLOR']),
       rule('right-only',{side:'right'},['COLOR']),
@@ -66,6 +67,7 @@ describe('component attribute appearance rules',()=>{
 
     expect(appearanceRuleTargets(value,'left','MATERIAL').map(item=>item.id)).toEqual(['left','right']);
     expect(appearanceRuleTargets(value,'left','COLOR').map(item=>item.id)).toEqual(['left','right','stabilizer']);
+    expect(appearanceRuleTargets(value,'left','COLOR').map(item=>item.id)).not.toContain('right-detail');
     expect(appearanceRuleTargets(value,'left','COLOR').map(item=>item.id)).not.toContain('cabin');
   });
 
