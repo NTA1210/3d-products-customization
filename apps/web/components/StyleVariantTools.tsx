@@ -5,6 +5,7 @@ import {useEditorStore} from '../lib/store';
 import AiManufacturingTools from './AiManufacturingTools';
 import CollectionWorkshopTools from './CollectionWorkshopTools';
 import MeasurementPanel from './MeasurementPanel';
+import PresetControls from './PresetControls';
 
 export default function StyleVariantTools(){
   const{assetId,manifest,selected,configuration,setVariants,variants,dispatch,applyRules}=useEditorStore();
@@ -16,6 +17,7 @@ export default function StyleVariantTools(){
   return <>
     <MeasurementPanel/>
     <div className="field-group"><div className="eyebrow">Style & Variant</div><label>Style</label><select defaultValue="" onChange={e=>{const style=styles.find(s=>s.id===e.target.value);if(style)applyRules(style.rulesJson,'STYLE',`Apply style ${style.name}`,style.id);}}><option value="">Choose style…</option>{styles.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>{definition&&state&&<><label>Variant</label><select value={state.variantId??''} disabled={!definition.variantGroupId} onChange={e=>{if(!e.target.value)dispatch({type:'RESET_COMPONENT',componentId:definition.id,source:'MANUAL'},'Reset component to original');else dispatch({type:'REPLACE_COMPONENT',componentId:definition.id,variantId:e.target.value,source:'MANUAL'},'Replace component variant');}}><option value="">Original component (reset)</option>{list.map((v:RuntimeVariant)=><option key={v.id} value={v.id}>{v.name} · {v.dimensionPolicy}</option>)}</select></>}</div>
+    <PresetControls/>
     <AiManufacturingTools/>
     <CollectionWorkshopTools/>
   </>;
