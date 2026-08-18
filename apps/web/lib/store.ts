@@ -7,6 +7,7 @@ import type {
   ComponentManifest,
   ComponentRole,
   DependencyRule,
+  MaterialPreset,
   ModelConfiguration,
   ModelManifest,
   TransformState,
@@ -15,7 +16,7 @@ import type {EditorAction} from '@product3d/action-engine';
 import type {PresetRule} from '@product3d/preset-engine';
 import {applyPresetRules} from '@product3d/preset-engine';
 import {applyAction,applyActions} from '@product3d/editor-core';
-import {demoMaterials} from './materials';
+import {demoMaterials,replaceRuntimeMaterials} from './materials';
 import {useSnapInteractionStore} from './snap-store';
 import type {RuntimeVariant} from './catalog-api';
 import {resetProductConfiguration} from './configuration-presets';
@@ -53,6 +54,7 @@ type EditorStore={
   redoStack:Snapshot[];
   error?:string;
   variants:Record<string,RuntimeVariant>;
+  materials:MaterialPreset[];
   setUploadedAsset:(a:string,u:string)=>void;
   setAssetAnalysis:(a:string,x:AssetAnalysis)=>void;
   setPreparedAsset:(m:ModelManifest,c:ModelConfiguration)=>void;
@@ -63,6 +65,7 @@ type EditorStore={
   setDependencies:(d:DependencyRule[])=>void;
   setPrepareVisibility:(id:string,v:boolean)=>void;
   setVariants:(v:RuntimeVariant[])=>void;
+  setMaterials:(v:MaterialPreset[])=>void;
   select:(id?:string)=>void;
   patchComponentDefinition:(id:string,p:Partial<ComponentManifest>)=>void;
   patchAnchor:(id:string,p:Partial<AnchorDefinition>)=>void;
@@ -92,6 +95,7 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
   undoStack:[],
   redoStack:[],
   variants:{},
+  materials:[...demoMaterials],
   setUploadedAsset:(assetName,assetUrl)=>set({
     phase:'PREPARE',assetName,assetUrl,assetId:undefined,projectId:undefined,analysis:undefined,
     selected:undefined,manifest:undefined,configuration:undefined,placementMode:'translate',componentMode:'translate',
@@ -142,6 +146,11 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     configuration:{...state.configuration,components:{...state.configuration.components,[id]:{...state.configuration.components[id],visible}}},
   }),
   setVariants:items=>set(state=>({variants:{...state.variants,...Object.fromEntries(items.map(item=>[item.id,item]))}})),
+  setMaterials:items=>{
+    if(!items.length)return;
+    replaceRuntimeMaterials(items);
+    set({materials:items.map(item=>structuredClone(item))});
+  },
   select:selected=>set({selected}),
   patchComponentDefinition:(id,patch)=>set(state=>!state.manifest?{}:{
     manifest:{...state.manifest,components:state.manifest.components.map(item=>item.id===id?{...item,...patch}:item)},
@@ -192,7 +201,7 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     const state=get();
     if(!state.manifest||!state.configuration)return false;
     const before=structuredClone(state.configuration);
-    const result=applyAction(action,state.manifest,state.configuration,{materials:demoMaterials,variants:Object.values(state.variants)});
+    const result=applyAction(action,state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)});
     if(!result.ok){set({error:result.message});return false;}
     set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label:label??action.type}],redoStack:[],error:undefined});
     return true;
@@ -205,7 +214,7 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     const resolvedActions=actions.filter(action=>action.type!=='ATTACH_COMPONENT'||action.createdBy!=='SNAP'||snapIntent.attachMode);
     if(!resolvedActions.length)return false;
     const before=structuredClone(state.configuration);
-    const result=applyActions(resolvedActions,state.manifest,state.configuration,{materials:demoMaterials,variants:Object.values(state.variants)});
+    const result=applyActions(resolvedActions,state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)});
     if(!result.ok){set({error:result.message});return false;}
     set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label}],redoStack:[],error:undefined});
     if(hasSnapAttachment&&snapIntent.attachMode)useSnapInteractionStore.getState().setAttachMode(false);
@@ -215,7 +224,7 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     const state=get();
     if(!state.manifest||!state.configuration)return false;
     const before=structuredClone(state.configuration);
-    const result=applyPresetRules(rules,source,state.manifest,state.configuration,{materials:demoMaterials,variants:Object.values(state.variants)});
+    const result=applyPresetRules(rules,source,state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)});
     if(!result.ok){set({error:result.message});return false;}
     const configuration={...result.configuration,...(source==='STYLE'?{appliedStyleId:id}:{appliedPresetId:id})};
     set({configuration,undoStack:[...state.undoStack,{configuration:before,label}],redoStack:[],error:undefined});
@@ -234,7 +243,7 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     if(!state.manifest||!state.configuration)return false;
     const before=structuredClone(state.configuration);
     const baseline=resetProductConfiguration(state.configuration);
-    const result=applyPresetRules(rules,'PRESET',state.manifest,baseline,{materials:demoMaterials,variants:Object.values(state.variants)});
+    const result=applyPresetRules(rules,'PRESET',state.manifest,baseline,{materials:state.materials,variants:Object.values(state.variants)});
     if(!result.ok){set({error:result.message});return false;}
     const configuration={...result.configuration,appliedPresetId:id};
     set({configuration,undoStack:[...state.undoStack,{configuration:before,label:label??'Reset preset'}],redoStack:[],error:undefined});

@@ -98,6 +98,15 @@ model MaterialPreset {
   active         Boolean  @default(true)
 }
 
+model ColorPreset {
+  id                            String   @id
+  name                          String
+  hex                           String
+  styleTags                     String[]
+  compatibleMaterialCategories String[]
+  active                        Boolean  @default(true)
+}
+
 model ComponentVariant {
   id                String  @id
   groupId           String

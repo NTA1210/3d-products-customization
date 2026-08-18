@@ -22,6 +22,14 @@ async function main(){
     {id:'mat_matte_black',name:'Matte Black Metal',category:'METAL',propertiesJson:{baseColor:'#262626',roughness:.72,metalness:.72,allowColorTint:true},styleTags:['industrial']},
   ])await db.materialPreset.upsert({where:{id:material.id},update:material,create:material});
 
+  for(const color of[
+    {id:'color_natural_oak',name:'Natural Oak',hex:'#C69C6D',styleTags:['scandinavian','light','natural'],compatibleMaterialCategories:['WOOD']},
+    {id:'color_warm_walnut',name:'Warm Walnut',hex:'#6B4430',styleTags:['classic','warm'],compatibleMaterialCategories:['WOOD']},
+    {id:'color_matte_black',name:'Matte Black',hex:'#262626',styleTags:['industrial','minimal'],compatibleMaterialCategories:['METAL','WOOD','PLASTIC']},
+    {id:'color_warm_white',name:'Warm White',hex:'#F2EEE6',styleTags:['minimal','light'],compatibleMaterialCategories:[]},
+    {id:'color_sage',name:'Sage',hex:'#A7B49A',styleTags:['natural','calm'],compatibleMaterialCategories:['FABRIC','WOOD','PLASTIC']},
+  ])await db.colorPreset.upsert({where:{id:color.id},update:color,create:color});
+
   await uploadVariant();
   await db.componentVariant.upsert({where:{id:'variant_top_wide'},update:{},create:{id:'variant_top_wide',groupId:'tops',role:'TOP',name:'Wide Top',assetUrl:'supabase://product3d/catalog/variants/wide-top-variant.glb',compatibilityJson:{roles:['TOP']},metadataJson:{anchorType:'BOUNDS_CENTER',dimensionPolicy:'AUTO_FIT',sourceDimensionsMm:{width:1500,height:600,depth:800}},active:true}});
   await db.stylePreset.upsert({where:{id:'style_scandinavian'},update:{},create:{id:'style_scandinavian',name:'Scandinavian Light',description:'Light wood surfaces with restrained dark metal accents.',styleTags:['scandinavian','light'],rulesJson:[{type:'SET_MATERIAL',target:{role:'TOP'},materialId:'mat_oak_light'},{type:'SET_MATERIAL',target:{role:'LEG'},materialId:'mat_matte_black'}] as Prisma.InputJsonValue,active:true}});
