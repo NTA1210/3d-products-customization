@@ -35,14 +35,49 @@ Dạng ví dụ:
 postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres
 ```
 
-Sau đó chạy:
+Sau khi clone/pull source và chỉ cần áp dụng migration đã commit:
 
 ```bash
 pnpm --filter @product3d/api prisma:generate
-pnpm --filter @product3d/api prisma:migrate
+pnpm --filter @product3d/api prisma:deploy
+pnpm --filter @product3d/api prisma:status
 ```
 
+`prisma:migrate` chạy `prisma migrate dev` và chỉ dành cho lúc chủ động thay `schema.prisma` để tạo migration mới. Không dùng nó như lệnh deploy migration thông thường lên Supabase.
+
 Nếu schema và Prisma Client lệch nhau, hãy generate lại trước khi debug controller. Xem thêm [Supabase Database](../SUPABASE_DATABASE.md).
+
+### Prisma P3015: migration directory thiếu `migration.sql`
+
+Ví dụ:
+
+```text
+Error: P3015
+Could not find the migration file at prisma/migrations/20260816031339_/migration.sql
+```
+
+Prisma scan toàn bộ thư mục dưới `prisma/migrations`; chỉ một thư mục local rỗng cũng chặn migration chain. Không chạy seed tiếp vì database schema chưa được cập nhật.
+
+Kiểm tra thư mục đó có được Git track không:
+
+```bash
+git ls-files apps/api/prisma/migrations/20260816031339_
+```
+
+Nếu command không in gì và thư mục thực sự không có `migration.sql`, đây là artifact local. Xóa đúng thư mục lỗi rồi pull lại migration đã commit:
+
+```bash
+rm -rf apps/api/prisma/migrations/20260816031339_
+git pull origin main
+pnpm --filter @product3d/api prisma:generate
+pnpm --filter @product3d/api prisma:deploy
+pnpm --filter @product3d/api prisma:status
+pnpm --filter @product3d/api prisma:seed
+```
+
+Không xóa migration đã được Git track hoặc migration đã áp dụng trong database chỉ để vượt lỗi. Nếu `git ls-files` có output, restore file từ Git thay vì xóa directory.
+
+Nếu seed báo `P2021 The table ... does not exist`, hãy sửa migration trước; đó thường là hậu quả của migration chưa chạy thành công chứ không phải lỗi seed độc lập.
 
 ## 3. Job không chạy / luôn ở QUEUED
 
