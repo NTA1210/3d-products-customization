@@ -15,23 +15,19 @@ import {Job as BullJob,Worker} from 'bullmq';
 import * as draco3d from 'draco3dgltf';
 import {MeshoptDecoder,MeshoptEncoder} from 'meshoptimizer';
 import validator from 'gltf-validator';
-import {
-  applyTargetTransform,
-  eulerToQuat,
-  prepareComponentTargets,
-} from './component-targets.js';
+import {applyTargetTransform,eulerToQuat,prepareComponentTargets} from './component-targets.js';
 
 const QUEUE='export-processing';
 const db=new PrismaClient();
 const execFileAsync=promisify(execFile);
 const workerDir=dirname(fileURLToPath(import.meta.url));
-type ExportFormat='GLB'|'OBJ'|'STL';
+type ExportFormat='GLB'|'GLTF'|'FBX'|'USDZ'|'OBJ'|'STL';
 type Data={databaseJobId:string;projectId:string;assetId:string;sourceObjectKey:string;manifest:ModelManifest;configuration:ModelConfiguration;filename:string;format:ExportFormat};
 type VariantRecord={id:string;name:string;assetUrl:string;metadataJson:Prisma.JsonValue};
 type VariantMetadata={anchorType?:string;dimensionPolicy?:'KEEP'|'AUTO_FIT'|'RULE_BASED';sourceDimensionsMm?:{width:number;height:number;depth:number}};
-
 type Vec3=[number,number,number];
 type Quat=[number,number,number,number];
+
 function env(name:string,fallback?:string){const value=process.env[name]??fallback;if(!value)throw new Error(`Missing ${name}`);return value;}
 const bucket=env('SUPABASE_STORAGE_BUCKET','product3d');
 const storage=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'),{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
@@ -48,7 +44,7 @@ async function loadVariantDocument(nodeIo:NodeIO,variant:VariantRecord){const ob
 async function compositeVariant(doc:Document,nodeIo:NodeIO,node:Node,variant:VariantRecord,state:ModelConfiguration['components'][string],preset:Awaited<ReturnType<typeof db.materialPreset.findMany>>[number]|undefined,color:string|undefined,anchor:AnchorDefinition|undefined){
   const parent=node.getParentNode();const rootScenes=doc.getRoot().listScenes().filter(scene=>scene.listChildren().includes(node));
   const placement=resolveVariantAnchorTransform({translation:[...node.getTranslation()] as Vec3,rotation:[...node.getRotation()] as Quat,scale:[...node.getScale()] as Vec3,anchor});
-  const beforeSceneCount=doc.getRoot().listScenes().length;const variantDoc=await loadVariantDocument(nodeIo,variant);mergeDocuments(doc,variantDoc);const mergedScenes=doc.getRoot().listScenes().slice(beforeSceneCount);if(!mergedScenes.length)throw new Error(`VARIANT_SCENE_MISSING: ${variant.id}`);
+  const beforeSceneCount=doc.getRoot().listScenes().length,variantDoc=await loadVariantDocument(nodeIo,variant);mergeDocuments(doc,variantDoc);const mergedScenes=doc.getRoot().listScenes().slice(beforeSceneCount);if(!mergedScenes.length)throw new Error(`VARIANT_SCENE_MISSING: ${variant.id}`);
   const wrapper=doc.createNode(`Variant ${variant.name}`).setTranslation(placement.translation).setRotation(placement.rotation).setScale(variantScale(variant.metadataJson as VariantMetadata,state));
   for(const scene of mergedScenes){for(const child of [...scene.listChildren()]){scene.removeChild(child);wrapper.addChild(child);}scene.dispose();}
   applyNodeMaterials(doc,wrapper,preset,color);if(parent)parent.addChild(wrapper);else(rootScenes[0]??doc.getRoot().getDefaultScene()??doc.createScene('Export Scene')).addChild(wrapper);node.dispose();
@@ -59,51 +55,41 @@ function applyPlacement(doc:Document,config:ModelConfiguration){const placement=
 async function bake(doc:Document,nodeIo:NodeIO,manifest:ModelManifest,config:ModelConfiguration){
   const materialIds=[...new Set(Object.values(config.components).map(component=>component.materialId).filter((value):value is string=>Boolean(value)))];
   const variantIds=[...new Set(Object.values(config.components).map(component=>component.variantId).filter((value):value is string=>Boolean(value)))];
-  const[presets,variants]=await Promise.all([
-    materialIds.length?db.materialPreset.findMany({where:{id:{in:materialIds}}}):Promise.resolve([]),
-    variantIds.length?db.componentVariant.findMany({where:{id:{in:variantIds},active:true},select:{id:true,name:true,assetUrl:true,metadataJson:true}}):Promise.resolve([]),
-  ]);
-  const presetMap=new Map(presets.map(preset=>[preset.id,preset]));
-  const variantMap=new Map(variants.map(variant=>[variant.id,variant]));
-  const targets=prepareComponentTargets(doc,manifest);
-
+  const[presets,variants]=await Promise.all([materialIds.length?db.materialPreset.findMany({where:{id:{in:materialIds}}}):Promise.resolve([]),variantIds.length?db.componentVariant.findMany({where:{id:{in:variantIds},active:true},select:{id:true,name:true,assetUrl:true,metadataJson:true}}):Promise.resolve([])]);
+  const presetMap=new Map(presets.map(preset=>[preset.id,preset])),variantMap=new Map(variants.map(variant=>[variant.id,variant])),targets=prepareComponentTargets(doc,manifest);
   for(const definition of manifest.components){
-    const state=config.components[definition.id];
-    if(!state)continue;
-    const target=targets.get(definition.id);
-    if(!target)throw new Error(`EXPORT_COMPONENT_TARGET_MISSING: ${definition.id}`);
+    const state=config.components[definition.id];if(!state)continue;const target=targets.get(definition.id);if(!target)throw new Error(`EXPORT_COMPONENT_TARGET_MISSING: ${definition.id}`);
     if(state.deleted||!state.visible){target.node.dispose();continue;}
     const preset=state.materialId?presetMap.get(state.materialId):undefined;
-    if(state.variantId){
-      const variant=variantMap.get(state.variantId);
-      if(!variant)throw new Error(`VARIANT_NOT_FOUND: ${state.variantId}`);
-      const metadata=variant.metadataJson as VariantMetadata;
-      const anchorType=metadata.anchorType??'BOUNDS_CENTER';
-      const anchor=findComponentPlacementAnchor(definition,anchorType,manifest.anchors??[]);
-      if(anchorType.trim().toUpperCase()!=='BOUNDS_CENTER'&&!anchor)throw new Error(`VARIANT_PLACEMENT_ANCHOR_MISSING: ${definition.id}:${anchorType}`);
-      // Apply the component's current size/position/rotation first. The shared anchor transform
-      // then maps the variant mount-origin into exactly the same local frame used by the viewer.
-      applyTargetTransform(target,manifest,state);
-      await compositeVariant(doc,nodeIo,target.node,variant,state,preset,state.color,anchor);
-      continue;
-    }
+    if(state.variantId){const variant=variantMap.get(state.variantId);if(!variant)throw new Error(`VARIANT_NOT_FOUND: ${state.variantId}`);const metadata=variant.metadataJson as VariantMetadata,anchorType=metadata.anchorType??'BOUNDS_CENTER',anchor=findComponentPlacementAnchor(definition,anchorType,manifest.anchors??[]);if(anchorType.trim().toUpperCase()!=='BOUNDS_CENTER'&&!anchor)throw new Error(`VARIANT_PLACEMENT_ANCHOR_MISSING: ${definition.id}:${anchorType}`);applyTargetTransform(target,manifest,state);await compositeVariant(doc,nodeIo,target.node,variant,state,preset,state.color,anchor);continue;}
     applyTargetTransform(target,manifest,state);
-    if((state.materialId||state.color)&&target.primitive){
-      const material=materialFor(doc,target.primitive,`${definition.name} Customized`);
-      applyMaterial(material,preset,state.color);
-      target.primitive.setMaterial(material);
-    }
+    if((state.materialId||state.color)&&target.primitive){const material=materialFor(doc,target.primitive,`${definition.name} Customized`);applyMaterial(material,preset,state.color);target.primitive.setMaterial(material);}
   }
   applyPlacement(doc,config);
 }
 
-async function convertDerived(glb:Uint8Array,format:Exclude<ExportFormat,'GLB'>){const dir=await mkdtemp(join(tmpdir(),'product3d-export-'));try{const input=join(dir,'customized.glb'),output=join(dir,`customized.${format.toLowerCase()}`);await writeFile(input,glb);const script=join(workerDir,'../convert.py');await execFileAsync(process.env.PYTHON_BIN??'python3',[script,input,output,format.toLowerCase()],{timeout:Number(process.env.FORMAT_EXPORT_TIMEOUT_MS??120000),maxBuffer:1024*1024});return new Uint8Array(await readFile(output));}finally{await rm(dir,{recursive:true,force:true});}}
-function contentType(format:ExportFormat){if(format==='GLB')return'model/gltf-binary';if(format==='STL')return'model/stl';return'text/plain; charset=utf-8';}
-async function processJob(job:BullJob<Data>){const data=job.data;await db.job.update({where:{id:data.databaseJobId},data:{status:'PROCESSING',failureReason:null}});try{const download=await storage.storage.from(bucket).download(data.sourceObjectKey);if(download.error||!download.data)throw download.error??new Error('Source object missing');const source=new Uint8Array(await download.data.arrayBuffer());const nodeIo=await io();const document=await nodeIo.readBinary(source);await bake(document,nodeIo,data.manifest,data.configuration);const glb=await nodeIo.writeBinary(document);const report=await validator.validateBytes(glb,{uri:data.format==='GLB'?data.filename:'customized.glb',format:'glb',maxIssues:5000});if(report.issues.numErrors)throw new Error(`Export validation failed with ${report.issues.numErrors} error(s)`);const output=data.format==='GLB'?glb:await convertDerived(glb,data.format),objectKey=`exports/${data.projectId}/${data.databaseJobId}/${data.filename}`;const uploaded=await storage.storage.from(bucket).upload(objectKey,output,{contentType:contentType(data.format),upsert:false});if(uploaded.error)throw uploaded.error;const result:Prisma.InputJsonObject={objectKey,filename:data.filename,format:data.format,sizeBytes:output.byteLength,sourceGlbValidation:{errors:report.issues.numErrors,warnings:report.issues.numWarnings},unit:data.format==='GLB'?'meter':'millimeter'};await db.job.update({where:{id:data.databaseJobId},data:{status:'COMPLETED',result}});return result;}catch(error){const message=error instanceof Error?error.message:String(error),retry=job.attemptsMade+1<(job.opts.attempts??1);await db.job.update({where:{id:data.databaseJobId},data:{status:retry?'RETRYING':'FAILED',failureReason:message}});throw error;}}
+function extension(format:ExportFormat){return format.toLowerCase();}
+function blenderFormat(format:ExportFormat):format is 'GLTF'|'FBX'|'USDZ'{return format==='GLTF'||format==='FBX'||format==='USDZ';}
+async function convertDerived(glb:Uint8Array,format:Exclude<ExportFormat,'GLB'>){
+  const dir=await mkdtemp(join(tmpdir(),'product3d-export-'));
+  try{
+    const input=join(dir,'customized.glb'),output=join(dir,`customized.${extension(format)}`);await writeFile(input,glb);
+    if(blenderFormat(format)){
+      const script=join(workerDir,'../blender_convert.py'),blender=process.env.BLENDER_BIN??'blender';
+      try{await execFileAsync(blender,['--background','--python',script,'--',input,output,format.toLowerCase()],{timeout:Number(process.env.FORMAT_EXPORT_TIMEOUT_MS??180000),maxBuffer:4*1024*1024});}
+      catch(error){const message=error instanceof Error?error.message:String(error);throw new Error(`BLENDER_FORMAT_EXPORT_FAILED (${format}). Configure BLENDER_BIN on the export worker. ${message}`);}
+    }else{
+      const script=join(workerDir,'../convert.py');await execFileAsync(process.env.PYTHON_BIN??'python3',[script,input,output,format.toLowerCase()],{timeout:Number(process.env.FORMAT_EXPORT_TIMEOUT_MS??120000),maxBuffer:1024*1024});
+    }
+    return new Uint8Array(await readFile(output));
+  }finally{await rm(dir,{recursive:true,force:true});}
+}
+function contentType(format:ExportFormat){if(format==='GLB')return'model/gltf-binary';if(format==='GLTF')return'model/gltf+json';if(format==='USDZ')return'model/vnd.usdz+zip';if(format==='STL')return'model/stl';if(format==='FBX')return'application/octet-stream';return'text/plain; charset=utf-8';}
+function outputUnit(format:ExportFormat){return format==='OBJ'||format==='STL'?'millimeter':'meter';}
+function fidelity(format:ExportFormat){if(format==='GLB'||format==='GLTF')return'FULL_PBR';if(format==='FBX'||format==='USDZ')return'BLENDER_TRANSLATED_MATERIALS';if(format==='OBJ')return'GEOMETRY_NORMAL_COLOR_NO_TEXTURE';return'GEOMETRY_ONLY';}
+async function processJob(job:BullJob<Data>){const data=job.data;await db.job.update({where:{id:data.databaseJobId},data:{status:'PROCESSING',failureReason:null}});try{const download=await storage.storage.from(bucket).download(data.sourceObjectKey);if(download.error||!download.data)throw download.error??new Error('Source object missing');const source=new Uint8Array(await download.data.arrayBuffer()),nodeIo=await io(),document=await nodeIo.readBinary(source);await bake(document,nodeIo,data.manifest,data.configuration);const glb=await nodeIo.writeBinary(document);const report=await validator.validateBytes(glb,{uri:data.format==='GLB'?data.filename:'customized.glb',format:'glb',maxIssues:5000});if(report.issues.numErrors)throw new Error(`Export validation failed with ${report.issues.numErrors} error(s)`);const output=data.format==='GLB'?glb:await convertDerived(glb,data.format),objectKey=`exports/${data.projectId}/${data.databaseJobId}/${data.filename}`;const uploaded=await storage.storage.from(bucket).upload(objectKey,output,{contentType:contentType(data.format),upsert:false});if(uploaded.error)throw uploaded.error;const result:Prisma.InputJsonObject={objectKey,filename:data.filename,format:data.format,sizeBytes:output.byteLength,sourceGlbValidation:{errors:report.issues.numErrors,warnings:report.issues.numWarnings},unit:outputUnit(data.format),fidelity:fidelity(data.format),customizationSource:'BAKED_CUSTOMIZED_GLB'};await db.job.update({where:{id:data.databaseJobId},data:{status:'COMPLETED',result}});return result;}catch(error){const message=error instanceof Error?error.message:String(error),retry=job.attemptsMade+1<(job.opts.attempts??1);await db.job.update({where:{id:data.databaseJobId},data:{status:retry?'RETRYING':'FAILED',failureReason:message}});throw error;}}
 const worker=new Worker<Data>(QUEUE,processJob,{connection:redis(),concurrency:Number(process.env.EXPORT_WORKER_CONCURRENCY??2)});
 worker.on('completed',job=>console.info(`[export-worker] completed ${job.id}`));
 worker.on('failed',(job,error)=>console.error(`[export-worker] failed ${job?.id??'unknown'}: ${error.message}`));
 async function shutdown(){await worker.close();await db.$disconnect();process.exit(0);}
-process.on('SIGINT',()=>void shutdown());
-process.on('SIGTERM',()=>void shutdown());
-console.info(`[export-worker] listening on ${QUEUE}`);
+process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown());console.info(`[export-worker] listening on ${QUEUE}`);
