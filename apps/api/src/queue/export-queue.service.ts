@@ -4,7 +4,7 @@ import {Queue} from 'bullmq';
 import {redisConnectionFromEnv} from '../config';
 
 export const EXPORT_PROCESSING_QUEUE='export-processing';
-export type ExportFormat='GLB'|'OBJ'|'STL';
+export type ExportFormat='GLB'|'GLTF'|'FBX'|'USDZ'|'OBJ'|'STL';
 export type ExportJobData={databaseJobId:string;projectId:string;assetId:string;sourceObjectKey:string;manifest:ModelManifest;configuration:ModelConfiguration;filename:string;format:ExportFormat};
 @Injectable()
 export class ExportQueueService implements OnModuleDestroy{
