@@ -25,6 +25,12 @@ describe('variant compatibility',()=>{
   it('keeps BOUNDS_CENTER variants compatible without a semantic custom anchor',()=>{
     expect(canApplyVariant(component,variant(),[],[center])).toBe(true);
   });
+  it('maps legacy CENTER to a neutral virtual bounds center when an old manifest has no anchors',()=>{
+    const legacy=variant({anchorType:'CENTER'});
+    expect(canApplyVariant(component,legacy,[],[])).toBe(true);
+    const anchor=findVariantPlacementAnchor(component,legacy,[]);
+    expect(anchor).toMatchObject({kind:'BOUNDS_CENTER',positionMm:[0,0,0],rotation:[0,0,0]});
+  });
 });
 
 describe('variant anchor transform',()=>{
