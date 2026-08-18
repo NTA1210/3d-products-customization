@@ -4,7 +4,7 @@ import {useMemo,useRef} from 'react';
 import {Html,TransformControls} from '@react-three/drei';
 import {useFrame} from '@react-three/fiber';
 import type {EditorAction} from '@product3d/action-engine';
-import type {ModelConfiguration,TransformState} from '@product3d/model-schema';
+import type {ComponentManifest,ModelConfiguration,TransformState} from '@product3d/model-schema';
 import * as THREE from 'three';
 import {useEditorStore} from '../lib/store';
 
@@ -29,6 +29,11 @@ function normalizeAngle(value:number){
   while(value>Math.PI)value-=Math.PI*2;
   while(value<-Math.PI)value+=Math.PI*2;
   return value;
+}
+
+function transformAxisAllowed(component:ComponentManifest|undefined,mode:'translate'|'rotate',axis:'x'|'y'|'z'){
+  if(!component?.editable)return false;
+  return mode==='translate'?(component.positionEditableAxes?.[axis]??true):(component.rotationEditableAxes?.[axis]??true);
 }
 
 function setFromWorldMatrix(object:THREE.Object3D,worldMatrix:THREE.Matrix4){
@@ -187,12 +192,16 @@ export function MultiSelectionTransformProxy({
   },[box]);
   const labelRef=useRef<THREE.Group>(null);
   const dragging=useRef(false),drag=useRef<ProxyDrag|undefined>(undefined);
+  const transformMode=mode==='rotate'?'rotate':'translate';
 
   const movableIds=useMemo(()=>selectedIds.filter(id=>{
     const definition=manifest?.components.find(item=>item.id===id);
     const state=configuration?.components[id];
-    return Boolean(definition?.editable&&state?.visible&&!state.deleted&&objects.get(id));
-  }),[configuration,manifest,objects,selectedIds]);
+    const hasAxis=mode==='scale'?false:(['x','y','z'] as const).some(axis=>transformAxisAllowed(definition,transformMode,axis));
+    return Boolean(definition?.editable&&state?.visible&&!state.deleted&&objects.get(id)&&hasAxis);
+  }),[configuration,manifest,mode,objects,selectedIds,transformMode]);
+
+  const allowedAxes=useMemo(()=>Object.fromEntries((['x','y','z'] as const).map(axis=>[axis,movableIds.length>0&&movableIds.every(id=>transformAxisAllowed(manifest?.components.find(item=>item.id===id),transformMode,axis))])) as Record<'x'|'y'|'z',boolean>,[manifest,movableIds,transformMode]);
 
   useFrame(()=>{
     const targets=movableIds.map(id=>objects.get(id)).filter((item):item is THREE.Object3D=>Boolean(item));
@@ -216,11 +225,11 @@ export function MultiSelectionTransformProxy({
     <group ref={labelRef} visible={false}>
       <Html center style={{pointerEvents:'none'}}>
         <div data-testid="multi-selection-indicator" style={{whiteSpace:'nowrap',border:'1px solid #b185ff',borderRadius:7,background:'rgba(24,14,37,.94)',color:'#f3eaff',padding:'5px 8px',fontSize:11,fontWeight:800}}>
-          {movableIds.length} editable / {selectedIds.length} selected{unsupported?' · Group scale disabled':''}
+          {movableIds.length} transformable / {selectedIds.length} selected{unsupported?' · Group scale disabled':''}
         </div>
       </Html>
     </group>
-    {!unsupported&&movableIds.length>0&&<>
+    {!unsupported&&movableIds.length>0&&Object.values(allowedAxes).some(Boolean)&&<>
       <primitive object={proxy}/>
       <TransformControls
         object={proxy}
@@ -229,6 +238,9 @@ export function MultiSelectionTransformProxy({
         size={size}
         translationSnap={translationSnap}
         rotationSnap={rotationSnap}
+        showX={allowedAxes.x}
+        showY={allowedAxes.y}
+        showZ={allowedAxes.z}
         onMouseDown={()=>{
           if(!configuration)return;
           const targets=movableIds.flatMap(id=>{
@@ -251,6 +263,8 @@ export function MultiSelectionTransformProxy({
             const finalPosition=item.object.position.clone();
             const finalRotation=item.object.rotation.clone();
             (['X','Y','Z'] as const).forEach((axis,index)=>{
+              const key=axis.toLowerCase() as 'x'|'y'|'z';
+              if(!allowedAxes[key])return;
               const delta=(finalPosition.getComponent(index)-item.position.getComponent(index))*1000;
               if(Math.abs(delta)>1e-6)actions.push({
                 type:'SET_POSITION',componentId:item.id,axis,
@@ -258,6 +272,8 @@ export function MultiSelectionTransformProxy({
               });
             });
             if(mode==='rotate')(['X','Y','Z'] as const).forEach((axis,index)=>{
+              const key=axis.toLowerCase() as 'x'|'y'|'z';
+              if(!allowedAxes[key])return;
               const delta=normalizeAngle((finalRotation.toArray()[index] as number)-(item.rotation.toArray()[index] as number));
               if(Math.abs(delta)>1e-9)actions.push({
                 type:'SET_ROTATION',componentId:item.id,axis,
