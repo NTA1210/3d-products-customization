@@ -1,6 +1,6 @@
 {
   "name":"@product3d/export-worker","version":"0.2.0","private":true,"type":"module",
   "scripts":{"dev":"tsx watch src/index.ts","build":"tsc -p tsconfig.json","start":"node dist/index.js"},
-  "dependencies":{"@gltf-transform/core":"4.4.2","@gltf-transform/extensions":"4.4.2","@gltf-transform/functions":"4.4.2","@prisma/client":"^5.22.0","@product3d/geometry-topology":"workspace:*","@product3d/model-schema":"workspace:*","@supabase/supabase-js":"2.111.0","bullmq":"5.81.2","draco3dgltf":"1.5.7","gltf-validator":"2.0.0-dev.3.10","meshoptimizer":"1.2.0"},
+  "dependencies":{"@gltf-transform/core":"4.4.2","@gltf-transform/extensions":"4.4.2","@gltf-transform/functions":"4.4.2","@prisma/client":"^5.22.0","@product3d/compatibility-engine":"workspace:*","@product3d/geometry-topology":"workspace:*","@product3d/model-schema":"workspace:*","@supabase/supabase-js":"2.111.0","bullmq":"5.81.2","draco3dgltf":"1.5.7","gltf-validator":"2.0.0-dev.3.10","meshoptimizer":"1.2.0"},
   "devDependencies":{"@types/draco3dgltf":"1.4.3","@types/node":"^22.9.0","tsx":"^4.19.2","typescript":"^5.6.3"}
 }

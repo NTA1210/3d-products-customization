@@ -8,7 +8,8 @@ import {Document,Material,Node,NodeIO,Primitive} from '@gltf-transform/core';
 import {ALL_EXTENSIONS} from '@gltf-transform/extensions';
 import {mergeDocuments} from '@gltf-transform/functions';
 import {Prisma,PrismaClient} from '@prisma/client';
-import type {ModelConfiguration,ModelManifest} from '@product3d/model-schema';
+import {findComponentPlacementAnchor,resolveVariantAnchorTransform} from '@product3d/compatibility-engine';
+import type {AnchorDefinition,ModelConfiguration,ModelManifest} from '@product3d/model-schema';
 import {createClient} from '@supabase/supabase-js';
 import {Job as BullJob,Worker} from 'bullmq';
 import * as draco3d from 'draco3dgltf';
@@ -18,7 +19,6 @@ import {
   applyTargetTransform,
   eulerToQuat,
   prepareComponentTargets,
-  quatToEuler,
 } from './component-targets.js';
 
 const QUEUE='export-processing';
@@ -28,8 +28,10 @@ const workerDir=dirname(fileURLToPath(import.meta.url));
 type ExportFormat='GLB'|'OBJ'|'STL';
 type Data={databaseJobId:string;projectId:string;assetId:string;sourceObjectKey:string;manifest:ModelManifest;configuration:ModelConfiguration;filename:string;format:ExportFormat};
 type VariantRecord={id:string;name:string;assetUrl:string;metadataJson:Prisma.JsonValue};
-type VariantMetadata={dimensionPolicy?:'KEEP'|'AUTO_FIT'|'RULE_BASED';sourceDimensionsMm?:{width:number;height:number;depth:number}};
+type VariantMetadata={anchorType?:string;dimensionPolicy?:'KEEP'|'AUTO_FIT'|'RULE_BASED';sourceDimensionsMm?:{width:number;height:number;depth:number}};
 
+type Vec3=[number,number,number];
+type Quat=[number,number,number,number];
 function env(name:string,fallback?:string){const value=process.env[name]??fallback;if(!value)throw new Error(`Missing ${name}`);return value;}
 const bucket=env('SUPABASE_STORAGE_BUCKET','product3d');
 const storage=createClient(env('SUPABASE_URL'),env('SUPABASE_SECRET_KEY'),{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
@@ -43,7 +45,14 @@ function applyNodeMaterials(doc:Document,root:Node,preset:Awaited<ReturnType<typ
 function variantObjectKey(uri:string){const match=/^supabase:\/\/([^/]+)\/(.+)$/.exec(uri);if(!match)throw new Error(`VARIANT_ASSET_URL_UNSUPPORTED: ${uri}`);if(match[1]!==bucket)throw new Error(`VARIANT_BUCKET_MISMATCH: ${match[1]}`);return match[2];}
 function variantScale(metadata:VariantMetadata,state:ModelConfiguration['components'][string]):[number,number,number]{const policy=metadata.dimensionPolicy??'AUTO_FIT';if(policy==='KEEP')return[...state.transform.scale];const source=metadata.sourceDimensionsMm;if(!source||source.width<=0||source.height<=0||source.depth<=0)throw new Error('VARIANT_SOURCE_DIMENSIONS_REQUIRED');return[state.dimensionsMm.width/source.width*state.transform.scale[0],state.dimensionsMm.height/source.height*state.transform.scale[1],state.dimensionsMm.depth/source.depth*state.transform.scale[2]];}
 async function loadVariantDocument(nodeIo:NodeIO,variant:VariantRecord){const objectKey=variantObjectKey(variant.assetUrl);const download=await storage.storage.from(bucket).download(objectKey);if(download.error||!download.data)throw download.error??new Error(`Variant asset ${variant.id} missing`);return nodeIo.readBinary(new Uint8Array(await download.data.arrayBuffer()));}
-async function compositeVariant(doc:Document,nodeIo:NodeIO,node:Node,variant:VariantRecord,state:ModelConfiguration['components'][string],preset:Awaited<ReturnType<typeof db.materialPreset.findMany>>[number]|undefined,color?:string){const parent=node.getParentNode();const rootScenes=doc.getRoot().listScenes().filter(scene=>scene.listChildren().includes(node));const translation=node.getTranslation(),baseEuler=quatToEuler(node.getRotation());const beforeSceneCount=doc.getRoot().listScenes().length;const variantDoc=await loadVariantDocument(nodeIo,variant);mergeDocuments(doc,variantDoc);const mergedScenes=doc.getRoot().listScenes().slice(beforeSceneCount);if(!mergedScenes.length)throw new Error(`VARIANT_SCENE_MISSING: ${variant.id}`);const wrapper=doc.createNode(`Variant ${variant.name}`).setTranslation([translation[0]+state.transform.position[0]/1000,translation[1]+state.transform.position[1]/1000,translation[2]+state.transform.position[2]/1000]).setRotation(eulerToQuat([baseEuler[0]+state.transform.rotation[0],baseEuler[1]+state.transform.rotation[1],baseEuler[2]+state.transform.rotation[2]])).setScale(variantScale(variant.metadataJson as VariantMetadata,state));for(const scene of mergedScenes){for(const child of [...scene.listChildren()]){scene.removeChild(child);wrapper.addChild(child);}scene.dispose();}applyNodeMaterials(doc,wrapper,preset,color);if(parent)parent.addChild(wrapper);else(rootScenes[0]??doc.getRoot().getDefaultScene()??doc.createScene('Export Scene')).addChild(wrapper);node.dispose();}
+async function compositeVariant(doc:Document,nodeIo:NodeIO,node:Node,variant:VariantRecord,state:ModelConfiguration['components'][string],preset:Awaited<ReturnType<typeof db.materialPreset.findMany>>[number]|undefined,color:string|undefined,anchor:AnchorDefinition|undefined){
+  const parent=node.getParentNode();const rootScenes=doc.getRoot().listScenes().filter(scene=>scene.listChildren().includes(node));
+  const placement=resolveVariantAnchorTransform({translation:[...node.getTranslation()] as Vec3,rotation:[...node.getRotation()] as Quat,scale:[...node.getScale()] as Vec3,anchor});
+  const beforeSceneCount=doc.getRoot().listScenes().length;const variantDoc=await loadVariantDocument(nodeIo,variant);mergeDocuments(doc,variantDoc);const mergedScenes=doc.getRoot().listScenes().slice(beforeSceneCount);if(!mergedScenes.length)throw new Error(`VARIANT_SCENE_MISSING: ${variant.id}`);
+  const wrapper=doc.createNode(`Variant ${variant.name}`).setTranslation(placement.translation).setRotation(placement.rotation).setScale(variantScale(variant.metadataJson as VariantMetadata,state));
+  for(const scene of mergedScenes){for(const child of [...scene.listChildren()]){scene.removeChild(child);wrapper.addChild(child);}scene.dispose();}
+  applyNodeMaterials(doc,wrapper,preset,color);if(parent)parent.addChild(wrapper);else(rootScenes[0]??doc.getRoot().getDefaultScene()??doc.createScene('Export Scene')).addChild(wrapper);node.dispose();
+}
 
 function applyPlacement(doc:Document,config:ModelConfiguration){const placement=config.placement.transform;if(placement.position.every(value=>value===0)&&placement.rotation.every(value=>value===0)&&placement.scale.every(value=>value===1))return;for(const scene of doc.getRoot().listScenes()){const wrapper=doc.createNode('Product Placement').setTranslation(placement.position).setRotation(eulerToQuat(placement.rotation)).setScale(placement.scale);for(const child of [...scene.listChildren()]){scene.removeChild(child);wrapper.addChild(child);}scene.addChild(wrapper);}}
 
@@ -68,7 +77,14 @@ async function bake(doc:Document,nodeIo:NodeIO,manifest:ModelManifest,config:Mod
     if(state.variantId){
       const variant=variantMap.get(state.variantId);
       if(!variant)throw new Error(`VARIANT_NOT_FOUND: ${state.variantId}`);
-      await compositeVariant(doc,nodeIo,target.node,variant,state,preset,state.color);
+      const metadata=variant.metadataJson as VariantMetadata;
+      const anchorType=metadata.anchorType??'BOUNDS_CENTER';
+      const anchor=findComponentPlacementAnchor(definition,anchorType,manifest.anchors??[]);
+      if(anchorType.trim().toUpperCase()!=='BOUNDS_CENTER'&&!anchor)throw new Error(`VARIANT_PLACEMENT_ANCHOR_MISSING: ${definition.id}:${anchorType}`);
+      // Apply the component's current size/position/rotation first. The shared anchor transform
+      // then maps the variant mount-origin into exactly the same local frame used by the viewer.
+      applyTargetTransform(target,manifest,state);
+      await compositeVariant(doc,nodeIo,target.node,variant,state,preset,state.color,anchor);
       continue;
     }
     applyTargetTransform(target,manifest,state);

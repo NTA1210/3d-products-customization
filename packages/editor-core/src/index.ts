@@ -120,7 +120,7 @@ export function applyAction(rawAction:unknown,manifest:ModelManifest,input:Model
   if(action.type==='REPLACE_COMPONENT'){
     const variant=resources.variants?.find(item=>item.id===action.variantId);
     if(!variant)return {ok:false,code:'VARIANT_NOT_FOUND',message:'Variant ID is not available.',action};
-    if(!canApplyVariant(definition,variant))return {ok:false,code:'VARIANT_INCOMPATIBLE',message:'This variant is not compatible with the selected component.',action};
+    if(!canApplyVariant(definition,variant,manifest.modelTags??[],manifest.anchors??[]))return {ok:false,code:'VARIANT_INCOMPATIBLE',message:'This variant is not compatible with the selected component, model tags, or required semantic anchor.',action};
   }
   if(action.type==='ATTACH_COMPONENT'){
     const targetDefinition=manifest.components.find(item=>item.id===action.targetComponentId);
