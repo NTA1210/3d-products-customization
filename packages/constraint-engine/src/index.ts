@@ -9,6 +9,14 @@ export function validateAction(action:EditorAction,manifest:ModelManifest,config
   const component=manifest.components.find(item=>item.id===action.componentId);
   if(!component)return {ok:false,code:'COMPONENT_NOT_FOUND',message:'Component does not exist in the active manifest.'};
   if(!component.editable)return {ok:false,code:'COMPONENT_NOT_EDITABLE',message:'Selected component is not editable.'};
+  if(action.type==='SET_POSITION'){
+    const axis=action.axis.toLowerCase() as 'x'|'y'|'z';
+    if(component.positionEditableAxes?.[axis]===false)return {ok:false,code:'POSITION_AXIS_NOT_EDITABLE',message:`Position ${action.axis} is locked for this component.`};
+  }
+  if(action.type==='SET_ROTATION'){
+    const axis=action.axis.toLowerCase() as 'x'|'y'|'z';
+    if(component.rotationEditableAxes?.[axis]===false)return {ok:false,code:'ROTATION_AXIS_NOT_EDITABLE',message:`Rotation ${action.axis} is locked for this component.`};
+  }
   if(action.type==='SET_DIMENSION'){
     if(!['AXIS_SCALE','UNIFORM_SCALE','PARAMETRIC'].includes(component.scalingMode))return {ok:false,code:'SCALING_MODE_REJECTED',message:`${component.scalingMode} does not support direct dimension editing.`};
     const key=action.axis.toLowerCase() as 'width'|'height'|'depth',mappedAxis=manifest.axisMapping[key];

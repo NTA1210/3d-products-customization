@@ -15,6 +15,8 @@ export const DimensionsSchema = z.object({ width: z.number(), height: z.number()
 export type Dimensions3D = z.infer<typeof DimensionsSchema>;
 
 const range = z.object({ min: z.number().optional(), max: z.number().optional() }).nullable();
+const axisPermissions = z.object({x:z.boolean(),y:z.boolean(),z:z.boolean()});
+export type AxisPermissions = z.infer<typeof axisPermissions>;
 
 export const DependencyRuleSchema = z.object({
   id: z.string(),
@@ -59,7 +61,9 @@ export const ComponentManifestSchema = z.object({
   name: z.string(),
   role: ComponentRole.default('UNKNOWN'),
   editable: z.boolean().default(false),
-  editableAxes: z.object({ x:z.boolean(), y:z.boolean(), z:z.boolean() }).default({ x:false,y:false,z:false }),
+  editableAxes: axisPermissions.default({ x:false,y:false,z:false }),
+  positionEditableAxes: axisPermissions.optional(),
+  rotationEditableAxes: axisPermissions.optional(),
   scalingMode: ScalingMode.default('FIXED'),
   constraints: z.object({ width:range, height:range, depth:range }),
   anchorIds: z.array(z.string()).default([]),

@@ -5,7 +5,7 @@ import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import {Bounds,GizmoHelper,GizmoViewport,Grid,Html,OrbitControls,TransformControls,useGLTF} from '@react-three/drei';
 import {analyzeTriangleTopology,type TriangleRegion} from '@product3d/geometry-topology';
 import type {EditorAction} from '@product3d/action-engine';
-import type {AnchorDefinition,ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
+import type {AnchorDefinition,ComponentManifest,ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {useDccViewportStore} from '../lib/dcc-viewport-store';
@@ -42,6 +42,13 @@ const variantCache=new Map<string,Promise<THREE.Object3D>>();
 const pendingDisposals=new WeakMap<THREE.Object3D,symbol>();
 
 function freshTransform():TransformState{return{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]};}
+function transformAxisAllowed(component:ComponentManifest|undefined,mode:'translate'|'rotate'|'scale',axis:'x'|'y'|'z'){
+  if(!component?.editable)return false;
+  if(mode==='scale')return component.editableAxes[axis];
+  if(mode==='translate')return component.positionEditableAxes?.[axis]??true;
+  return component.rotationEditableAxes?.[axis]??true;
+}
+function allTransformAxesAllowed(component:ComponentManifest|undefined,mode:'translate'|'rotate'){return(['x','y','z'] as const).every(axis=>transformAxisAllowed(component,mode,axis));}
 function pad(value:number,size=4){return String(value).padStart(size,'0');}
 function stablePath(object:THREE.Object3D){const names:string[]=[];let current:THREE.Object3D|null=object;while(current){const index=current.parent?current.parent.children.indexOf(current):0;names.push(`${current.name||current.type}[${index}]`);current=current.parent;}return names.reverse().join('/');}
 function hashPath(value:string){let hash=2166136261;for(let index=0;index<value.length;index+=1){hash^=value.charCodeAt(index);hash=Math.imul(hash,16777619);}return(hash>>>0).toString(16).padStart(8,'0');}
@@ -113,7 +120,7 @@ function prepare(scene:THREE.Object3D,associations:Map<THREE.Object3D,GltfAssoci
     const box=new THREE.Box3().setFromObject(part.mesh),size=new THREE.Vector3();box.getSize(size);
     const dimensions={width:Math.max(size.x*1000,.001),height:Math.max(size.y*1000,.001),depth:Math.max(size.z*1000,.001)};
     const partAnchors=autoAnchorsForMesh(part.id,part.mesh);anchors.push(...partAnchors);
-    components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:partAnchors.map(anchor=>anchor.id),materialSlotIds:[]});
+    components.push({id:part.id,sourceNodeIds:[part.nodeId],sourceMeshIds:[part.meshId],sourceRegionIds:part.sourceRegionIds,name:part.name,role:'UNKNOWN',editable:false,editableAxes:{x:false,y:false,z:false},positionEditableAxes:{x:true,y:true,z:true},rotationEditableAxes:{x:true,y:true,z:true},scalingMode:'FIXED',constraints:{width:null,height:null,depth:null},anchorIds:partAnchors.map(anchor=>anchor.id),materialSlotIds:[]});
     configs[part.id]={originalDimensionsMm:dimensions,dimensionsMm:{...dimensions},transform:freshTransform(),visible:true,deleted:false};
   }
   return{
@@ -204,9 +211,11 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const translationSnap=gridSnapEnabled?Math.max(gridStepMm/1000,1e-9):undefined;
   const rotationSnap=gridSnapEnabled?THREE.MathUtils.degToRad(rotationSnapDeg):undefined;
   const isMultiSelection=Boolean(configuration?.placement.locked&&selectedIds.length>1);
+  const canAnchorSnap=allTransformAxesAllowed(selectedDefinition,'translate');
+  const canSnapRotation=allTransformAxesAllowed(selectedDefinition,'rotate');
 
   const updateSnapCandidate=useCallback(()=>{
-    if(selectedIds.length>1||!snapEnabled||componentMode!=='translate'||!manifest||!configuration||!selectedDefinition||!selectionTarget){snapCandidateRef.current=null;setCandidate(undefined);return;}
+    if(selectedIds.length>1||!snapEnabled||!canAnchorSnap||componentMode!=='translate'||!manifest||!configuration||!selectedDefinition||!selectionTarget){snapCandidateRef.current=null;setCandidate(undefined);return;}
     const candidate=findNearestAnchorCandidate({sourceComponentId:selectedDefinition.id,sourceObject:selectionTarget,manifest,configuration,objects});
     if(!candidate){snapCandidateRef.current=null;setCandidate(undefined);return;}
     const targetPoint=anchorWorldPosition(candidate.targetObject,candidate.targetAnchor);const perPixel=worldPerPixel(camera,canvasSize.height,targetPoint);const indicatorDistance=perPixel*NEAREST_INDICATOR_PIXELS;
@@ -214,11 +223,11 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     const ready=candidate.compatible&&candidate.distanceWorld<=perPixel*SNAP_PIXELS;
     snapCandidateRef.current={...candidate,ready};
     setCandidate({sourceComponentId:selectedDefinition.id,sourceAnchorId:candidate.sourceAnchor.id,sourceAnchorName:candidate.sourceAnchor.name??candidate.sourceAnchor.id,targetComponentId:candidate.targetComponentId,targetComponentName:candidate.targetComponentName,targetAnchorId:candidate.targetAnchor.id,targetAnchorName:candidate.targetAnchor.name??candidate.targetAnchor.id,gapMm:candidate.distanceWorld*1000,compatible:candidate.compatible,ready});
-  },[selectedIds.length,snapEnabled,componentMode,manifest,configuration,selectedDefinition,selectionTarget,objects,camera,canvasSize.height,setCandidate]);
+  },[selectedIds.length,snapEnabled,canAnchorSnap,componentMode,manifest,configuration,selectedDefinition,selectionTarget,objects,camera,canvasSize.height,setCandidate]);
 
   const updateGroundBarrier=useCallback(()=>{
     const drag=groundDragRef.current;
-    if(componentMode!=='translate'||!drag||!selectionTarget||!selectedDefinition){setGroundBarrier(undefined);return;}
+    if(componentMode!=='translate'||!transformAxisAllowed(selectedDefinition,'translate','y')||!drag||!selectionTarget||!selectedDefinition){setGroundBarrier(undefined);return;}
     selectionTarget.updateWorldMatrix(true,true);
     const box=new THREE.Box3().setFromObject(selectionTarget);
     if(box.isEmpty()){setGroundBarrier(undefined);return;}
@@ -250,7 +259,7 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
   const indicator=<SelectionIndicator target={selectionTarget} label={selectedDefinition?.name} visible={selectionVisible&&!isMultiSelection} showLabel={labelMode==='selected'}/>;
   const componentLabels=<ComponentLabels objects={objects} manifest={manifest} configuration={configuration} mode={labelMode} selected={selected}/>;
   const proximity=candidateState&&!isMultiSelection?<ProximityIndicator target={candidateTarget} label={candidateState.targetComponentName} gapMm={candidateState.gapMm} compatible={candidateState.compatible} ready={candidateState.ready}/>:null;
-  const anchorMarkers=<AnchorMarkers target={selectionTarget} anchors={selectedAnchors} visible={Boolean(!isMultiSelection&&snapEnabled&&phase==='EDITOR'&&configuration?.placement.locked&&componentMode==='translate'&&selectionVisible)}/>;
+  const anchorMarkers=<AnchorMarkers target={selectionTarget} anchors={selectedAnchors} visible={Boolean(!isMultiSelection&&snapEnabled&&canAnchorSnap&&phase==='EDITOR'&&configuration?.placement.locked&&componentMode==='translate'&&selectionVisible)}/>;
   const cameraController=<DccCameraController selectedTarget={selectionTarget} modelTarget={groupRef.current??undefined} request={frameRequest}/>;
 
   if(phase==='EDITOR'&&!configuration?.placement.locked)return <>
@@ -268,20 +277,20 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     {cameraController}
   </>;
 
-  const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&!isMultiSelection&&selectedDefinition?.editable&&selectedState&&selectionTarget?<TransformControls
+  const componentControls=phase==='EDITOR'&&configuration?.placement.locked&&!isMultiSelection&&selectedDefinition?.editable&&selectedState&&selectionTarget&&(['x','y','z'] as const).some(axis=>transformAxisAllowed(selectedDefinition,componentMode,axis))?<TransformControls
     object={selectionTarget}
     mode={componentMode}
     space={transformSpace}
     size={gizmoSize}
     translationSnap={translationSnap}
     rotationSnap={rotationSnap}
-    showX={componentMode!=='scale'||selectedDefinition.editableAxes.x}
-    showY={componentMode!=='scale'||selectedDefinition.editableAxes.y}
-    showZ={componentMode!=='scale'||selectedDefinition.editableAxes.z}
+    showX={transformAxisAllowed(selectedDefinition,componentMode,'x')}
+    showY={transformAxisAllowed(selectedDefinition,componentMode,'y')}
+    showZ={transformAxisAllowed(selectedDefinition,componentMode,'z')}
     onMouseDown={()=>{
       setCandidate(undefined);setGroundBarrier(undefined);snapCandidateRef.current=null;
       dragRef.current={position:selectionTarget.position.clone(),rotation:selectionTarget.rotation.clone(),scale:selectionTarget.scale.clone(),state:structuredClone(selectedState)};
-      if(componentMode==='translate'){
+      if(componentMode==='translate'&&transformAxisAllowed(selectedDefinition,'translate','y')){
         selectionTarget.updateWorldMatrix(true,true);
         const box=new THREE.Box3().setFromObject(selectionTarget);const center=box.isEmpty()?selectionTarget.getWorldPosition(new THREE.Vector3()):box.getCenter(new THREE.Vector3());
         groundDragRef.current={released:!box.isEmpty()&&box.min.y<0,breakDistanceWorld:Math.max(worldPerPixel(camera,canvasSize.height,center)*GROUND_BREAK_PIXELS,1e-5)};
@@ -291,17 +300,17 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     onMouseUp={()=>{
       const start=dragRef.current;if(!start)return;
       let finalPosition=selectionTarget.position.clone(),finalRotation=selectionTarget.rotation.clone();const finalScale=selectionTarget.scale.clone();const snap=snapCandidateRef.current;
-      if(componentMode==='translate'&&snapEnabled&&snap?.ready){const resolved=snappedLocalTransform(selectionTarget,snap.sourceAnchor,snap.targetObject,snap.targetAnchor);finalPosition=resolved.position;if(snap.sourceAnchor.alignRotation&&snap.targetAnchor.alignRotation)finalRotation=resolved.rotation;}
+      if(componentMode==='translate'&&snapEnabled&&canAnchorSnap&&snap?.ready){const resolved=snappedLocalTransform(selectionTarget,snap.sourceAnchor,snap.targetObject,snap.targetAnchor);finalPosition=resolved.position;if(canSnapRotation&&snap.sourceAnchor.alignRotation&&snap.targetAnchor.alignRotation)finalRotation=resolved.rotation;}
       selectionTarget.position.copy(start.position);selectionTarget.rotation.copy(start.rotation);selectionTarget.scale.copy(start.scale);
       const actions:EditorAction[]=[];
       if(componentMode==='translate'){
-        (['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_POSITION',componentId:selectedDefinition.id,axis,value:start.state.transform.position[index]+(finalPosition.getComponent(index)-start.position.getComponent(index))*1000,source:'MANUAL'}));
-        if(snap?.ready&&snap.sourceAnchor.alignRotation&&snap.targetAnchor.alignRotation)(['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));
-        if(snapEnabled&&snap?.ready)actions.push({type:'ATTACH_COMPONENT',componentId:selectedDefinition.id,sourceAnchorId:snap.sourceAnchor.id,targetComponentId:snap.targetComponentId,targetAnchorId:snap.targetAnchor.id,createdBy:'SNAP',source:'MANUAL'});
+        (['X','Y','Z'] as const).forEach((axis,index)=>{const key=axis.toLowerCase() as 'x'|'y'|'z';if(!transformAxisAllowed(selectedDefinition,'translate',key))return;actions.push({type:'SET_POSITION',componentId:selectedDefinition.id,axis,value:start.state.transform.position[index]+(finalPosition.getComponent(index)-start.position.getComponent(index))*1000,source:'MANUAL'});});
+        if(canSnapRotation&&snap?.ready&&snap.sourceAnchor.alignRotation&&snap.targetAnchor.alignRotation)(['X','Y','Z'] as const).forEach((axis,index)=>{const key=axis.toLowerCase() as 'x'|'y'|'z';if(!transformAxisAllowed(selectedDefinition,'rotate',key))return;actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'});});
+        if(snapEnabled&&canAnchorSnap&&snap?.ready)actions.push({type:'ATTACH_COMPONENT',componentId:selectedDefinition.id,sourceAnchorId:snap.sourceAnchor.id,targetComponentId:snap.targetComponentId,targetAnchorId:snap.targetAnchor.id,createdBy:'SNAP',source:'MANUAL'});
       }else if(componentMode==='rotate'){
-        (['X','Y','Z'] as const).forEach((axis,index)=>actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'}));
+        (['X','Y','Z'] as const).forEach((axis,index)=>{const key=axis.toLowerCase() as 'x'|'y'|'z';if(!transformAxisAllowed(selectedDefinition,'rotate',key))return;actions.push({type:'SET_ROTATION',componentId:selectedDefinition.id,axis,value:start.state.transform.rotation[index]+normalizeAngle(finalRotation.toArray()[index] as number-(start.rotation.toArray()[index] as number)),source:'MANUAL'});});
       }else if(selectedDefinition.scalingMode==='AXIS_SCALE'){
-        const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!selectedDefinition.editableAxes[axis])return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});
+        const inverse={x:'width',y:'height',z:'depth'} as const;(['x','y','z'] as const).forEach((axis,index)=>{if(!transformAxisAllowed(selectedDefinition,'scale',axis))return;const key=inverse[axis],factor=finalScale.getComponent(index)/Math.max(Math.abs(start.scale.getComponent(index)),1e-9);actions.push({type:'SET_DIMENSION',componentId:selectedDefinition.id,axis:key.toUpperCase() as 'WIDTH'|'HEIGHT'|'DEPTH',valueMm:Math.max(.001,start.state.dimensionsMm[key]*factor),source:'MANUAL'});});
       }
       dragRef.current=null;groundDragRef.current=null;snapCandidateRef.current=null;setCandidate(undefined);setGroundBarrier(undefined);if(actions.length)dispatchBatch(actions,snap?.ready?`Snap ${selectedDefinition.name} to ${snap.targetComponentName}`:`Direct ${componentMode} ${selectedDefinition.name}`);
     }}
