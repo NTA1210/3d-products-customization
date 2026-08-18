@@ -61,6 +61,7 @@ export const ComponentManifestSchema = z.object({
   name: z.string(),
   role: ComponentRole.default('UNKNOWN'),
   styleTags: z.array(z.string()).optional(),
+  labels: z.array(z.string()).optional(),
   editable: z.boolean().default(false),
   editableAxes: axisPermissions.default({ x:false,y:false,z:false }),
   positionEditableAxes: axisPermissions.optional(),
