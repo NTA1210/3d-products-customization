@@ -18,6 +18,18 @@ const range = z.object({ min: z.number().optional(), max: z.number().optional() 
 const axisPermissions = z.object({x:z.boolean(),y:z.boolean(),z:z.boolean()});
 export type AxisPermissions = z.infer<typeof axisPermissions>;
 
+export const AppearanceSyncChannel=z.enum(['MATERIAL','COLOR']);
+export type AppearanceSyncChannel=z.infer<typeof AppearanceSyncChannel>;
+const componentAttributes=z.record(z.string());
+export const AppearanceRuleSchema=z.object({
+  id:z.string(),
+  name:z.string(),
+  match:componentAttributes.default({}),
+  syncChannels:z.array(AppearanceSyncChannel).default(['MATERIAL','COLOR']),
+  enabled:z.boolean().default(true),
+});
+export type AppearanceRule=z.infer<typeof AppearanceRuleSchema>;
+
 export const DependencyRuleSchema = z.object({
   id: z.string(),
   sourceComponentId: z.string(),
@@ -61,6 +73,7 @@ export const ComponentManifestSchema = z.object({
   name: z.string(),
   role: ComponentRole.default('UNKNOWN'),
   styleTags: z.array(z.string()).optional(),
+  attributes: componentAttributes.optional(),
   labels: z.array(z.string()).optional(),
   editable: z.boolean().default(false),
   editableAxes: axisPermissions.default({ x:false,y:false,z:false }),
@@ -83,6 +96,7 @@ export const ModelManifestSchema = z.object({
   axisMapping: z.object({ width:z.enum(['x','y','z']), height:z.enum(['x','y','z']), depth:z.enum(['x','y','z']) }),
   components: z.array(ComponentManifestSchema),
   dependencies: z.array(DependencyRuleSchema).default([]),
+  appearanceRules:z.array(AppearanceRuleSchema).optional(),
   anchors: z.array(AnchorDefinitionSchema).optional(),
 });
 export type ModelManifest = z.infer<typeof ModelManifestSchema>;

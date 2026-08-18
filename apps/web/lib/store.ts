@@ -3,6 +3,7 @@
 import {create} from 'zustand';
 import type {
   AnchorDefinition,
+  AppearanceRule,
   AssetAnalysis,
   ComponentManifest,
   ComponentRole,
@@ -20,7 +21,7 @@ import {demoMaterials,replaceRuntimeMaterials} from './materials';
 import {useSnapInteractionStore} from './snap-store';
 import type {RuntimeVariant} from './catalog-api';
 import {resetProductConfiguration} from './configuration-presets';
-import {expandManualStyleSyncAction} from './component-style-sync';
+import {expandManualAppearanceRuleAction} from './appearance-rules';
 
 type Phase='EMPTY'|'PREPARE'|'EDITOR';
 type TransformMode='translate'|'rotate'|'scale';
@@ -64,6 +65,7 @@ type EditorStore={
   setProjectId:(id?:string)=>void;
   replaceManifest:(m:ModelManifest)=>boolean;
   setDependencies:(d:DependencyRule[])=>void;
+  setAppearanceRules:(rules:AppearanceRule[])=>void;
   setPrepareVisibility:(id:string,v:boolean)=>void;
   setVariants:(v:RuntimeVariant[])=>void;
   setMaterials:(v:MaterialPreset[])=>void;
@@ -143,6 +145,7 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     return true;
   },
   setDependencies:dependencies=>set(state=>state.manifest?{manifest:{...state.manifest,dependencies}}:{}),
+  setAppearanceRules:appearanceRules=>set(state=>state.manifest?{manifest:{...state.manifest,appearanceRules}}:{}),
   setPrepareVisibility:(id,visible)=>set(state=>!state.configuration?.components[id]?{}:{
     configuration:{...state.configuration,components:{...state.configuration.components,[id]:{...state.configuration.components[id],visible}}},
   }),
@@ -202,15 +205,15 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     const state=get();
     if(!state.manifest||!state.configuration)return false;
     const before=structuredClone(state.configuration);
-    const linkedActions=expandManualStyleSyncAction(action,state.manifest);
+    const linkedActions=expandManualAppearanceRuleAction(action,state.manifest);
     const result=linkedActions.length===1
       ?applyAction(linkedActions[0],state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)})
       :applyActions(linkedActions,state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)});
     if(!result.ok){
-      set({error:linkedActions.length>1?`Linked appearance sync failed: ${result.message}`:result.message});
+      set({error:linkedActions.length>1?`Appearance rule sync failed: ${result.message}`:result.message});
       return false;
     }
-    const historyLabel=linkedActions.length>1?`${label??action.type} · linked ${linkedActions.length} components`:(label??action.type);
+    const historyLabel=linkedActions.length>1?`${label??action.type} · synced ${linkedActions.length} components`:(label??action.type);
     set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label:historyLabel}],redoStack:[],error:undefined});
     return true;
   },

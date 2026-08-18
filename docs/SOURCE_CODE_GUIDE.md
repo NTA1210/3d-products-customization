@@ -24,6 +24,8 @@ Không nên đọc repo bằng cách mở từng file ngẫu nhiên. Hãy đi th
 | Editor chrome, component labels và shortcut | [13 - Editor UI và Shortcuts](guides/13_EDITOR_UI_AND_SHORTCUTS.md) |
 | Workflow edit kiểu Maya/Blender/DCC | [14 - DCC Editor Workflow](guides/14_DCC_EDITOR_WORKFLOW.md) |
 | Free Move, temporary Snap, candidate ranking, Attach intent | [15 - Designer Snap & Assembly Flow](guides/15_DESIGNER_SNAP_ASSEMBLY_FLOW.md) |
+| Placement toàn model và multi-select group transform | [16 - Placement & Multi-Selection](guides/16_PLACEMENT_AND_MULTI_SELECTION.md) |
+| Đồng bộ Material/Color theo component attributes | [17 - Appearance Attribute Rules](guides/17_APPEARANCE_ATTRIBUTE_RULES.md) |
 
 ## Thứ tự đọc khuyến nghị cho developer mới
 
@@ -31,7 +33,7 @@ Không nên đọc repo bằng cách mở từng file ngẫu nhiên. Hãy đi th
 2. [Supabase Database](SUPABASE_DATABASE.md)
 3. [Repository và kiến trúc](guides/02_REPOSITORY_AND_ARCHITECTURE.md)
 4. Chọn nhánh làm việc:
-   - Frontend: [Web Editor](guides/03_WEB_EDITOR.md) → [Editor UI và Shortcuts](guides/13_EDITOR_UI_AND_SHORTCUTS.md) → [DCC Editor Workflow](guides/14_DCC_EDITOR_WORKFLOW.md) → [Designer Snap & Assembly Flow](guides/15_DESIGNER_SNAP_ASSEMBLY_FLOW.md)
+   - Frontend: [Web Editor](guides/03_WEB_EDITOR.md) → [Editor UI và Shortcuts](guides/13_EDITOR_UI_AND_SHORTCUTS.md) → [DCC Editor Workflow](guides/14_DCC_EDITOR_WORKFLOW.md) → [Designer Snap & Assembly Flow](guides/15_DESIGNER_SNAP_ASSEMBLY_FLOW.md) → [Placement & Multi-Selection](guides/16_PLACEMENT_AND_MULTI_SELECTION.md) → [Appearance Attribute Rules](guides/17_APPEARANCE_ATTRIBUTE_RULES.md)
    - Backend: [API Backend](guides/04_API_BACKEND.md) → [Dữ liệu, xác thực và Storage](guides/05_DATA_AUTH_STORAGE.md)
 5. [Worker và pipeline](guides/06_WORKERS_AND_PIPELINES.md)
 6. [Kiểm thử và CI](guides/08_TESTING_AND_CI.md)
@@ -62,6 +64,7 @@ Bộ guide này **không thay thế** các tài liệu kỹ thuật hiện hữu
 - Không bypass Action/Constraint/Compatibility pipeline để mutate trực tiếp scene.
 - **Attachment là business state, không phải Three.js hierarchy.** Component editable phải tiếp tục là runtime siblings; không re-parent mesh để biểu diễn việc gắn part.
 - **Snap vị trí không đồng nghĩa Attach.** Chỉ explicit Attach mode mới được persist relationship; Free Move là mặc định.
+- **Appearance sync dùng component attributes + model-level Appearance Rules.** Không dùng exact label equality, component name hoặc Three.js hierarchy làm synchronization contract.
 - Không lưu signed URL hết hạn vào DB như canonical state; lưu object key/ID và tạo signed URL khi cần.
 - Browser chỉ dùng Supabase publishable key. `DATABASE_URL`, `SUPABASE_SECRET_KEY` và `OPENAI_API_KEY` chỉ ở server/worker.
 - Tác vụ dài phải chạy qua BullMQ worker; không giữ HTTP request chờ Blender/Trimesh/export/AI hoàn tất.
