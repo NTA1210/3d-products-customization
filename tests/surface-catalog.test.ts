@@ -11,10 +11,14 @@ describe('surface catalog schemas',()=>{
   });
 
   it('hydrates the shared material catalog in place',()=>{
-    const reference=demoMaterials;
+    const reference=demoMaterials,original=structuredClone(demoMaterials);
     const catalog=[MaterialPresetSchema.parse({id:'mat_custom',name:'Custom Fabric',category:'FABRIC',baseColor:'#445566',roughness:.8,metalness:0,styleTags:['soft'],allowColorTint:true})];
-    replaceRuntimeMaterials(catalog);
-    expect(demoMaterials).toBe(reference);
-    expect(demoMaterials).toEqual(catalog);
+    try{
+      replaceRuntimeMaterials(catalog);
+      expect(demoMaterials).toBe(reference);
+      expect(demoMaterials).toEqual(catalog);
+    }finally{
+      replaceRuntimeMaterials(original);
+    }
   });
 });
