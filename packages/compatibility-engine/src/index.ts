@@ -27,12 +27,16 @@ function rotateVector([x,y,z]:Vec3,[qx,qy,qz,qw]:Quat):Vec3{
   return[x+qw*tx+(qy*tz-qz*ty),y+qw*ty+(qz*tx-qx*tz),z+qw*tz+(qx*ty-qy*tx)];
 }
 
-export function findVariantPlacementAnchor(component:ComponentManifest,variant:ComponentVariant,anchors:AnchorDefinition[]=[]){
-  const requested=normalized(variant.anchorType||'BOUNDS_CENTER');
+export function findComponentPlacementAnchor(component:ComponentManifest,anchorType:string,anchors:AnchorDefinition[]=[]){
+  const requested=normalized(anchorType||'BOUNDS_CENTER');
   return anchors
     .filter(anchor=>anchor.componentId===component.id)
     .filter(anchor=>requested==='BOUNDS_CENTER'?anchor.kind==='BOUNDS_CENTER':normalized(anchor.connectionType||'GENERIC')===requested)
     .sort((a,b)=>anchorRank(a)-anchorRank(b)||b.confidence-a.confidence||a.id.localeCompare(b.id))[0];
+}
+
+export function findVariantPlacementAnchor(component:ComponentManifest,variant:ComponentVariant,anchors:AnchorDefinition[]=[]){
+  return findComponentPlacementAnchor(component,variant.anchorType,anchors);
 }
 
 /**
@@ -42,7 +46,7 @@ export function findVariantPlacementAnchor(component:ComponentManifest,variant:C
  */
 export function resolveVariantAnchorTransform(input:{translation:Vec3;rotation:Quat;scale:Vec3;anchor?:AnchorDefinition}){
   if(!input.anchor)return{translation:[...input.translation] as Vec3,rotation:[...input.rotation] as Quat};
-  const local:[number,number,number]=[
+  const local:Vec3=[
     input.anchor.positionMm[0]/1000*input.scale[0],
     input.anchor.positionMm[1]/1000*input.scale[1],
     input.anchor.positionMm[2]/1000*input.scale[2],
