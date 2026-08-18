@@ -6,10 +6,12 @@ import {getJobArtifact,queueExport,waitForJob} from './project-api';
 const root=()=>`${(process.env.NEXT_PUBLIC_API_URL??'http://localhost:4000').replace(/\/$/,'')}/api`;
 async function request<T>(url:string,init?:RequestInit):Promise<T>{const response=await authFetch(url,init);if(!response.ok)throw new Error(await response.text());return response.json() as Promise<T>;}
 
-export type ValidatedSuggestion={id:string;title:string;reason:string;actions:EditorAction[];valid:boolean;validationErrors:string[]};
+export type ValidatedSuggestion={id:string;title:string;reason:string;actions:EditorAction[];valid:boolean;validationErrors:string[];requestedStyleIds?:string[]};
 export type AiDesignResult={id:string;summary:string;suggestions:ValidatedSuggestion[]};
 export type ManufacturingIssue={id:string;ruleId:string;severity:'INFO'|'WARNING'|'ERROR';componentIds:string[];message:string;measuredValue?:number;expectedRange?:{min?:number;max?:number};suggestedActions?:EditorAction[]};
 export type ManufacturingCheckResult={id:string;status:string;issues:ManufacturingIssue[];geometryJson?:Record<string,unknown>|null};
+export type ManufacturingVisionExplanation={issueId:string;explanation:string;impact:string;suggestedNextStep:string};
+export type ManufacturingVisionResult={id:string;manufacturingCheckId:string;renderJobId:string;summary:string;visualObservations:string[];explanations:ManufacturingVisionExplanation[];authoritativeSource:'RULE_AND_GEOMETRY'};
 
 export async function createMultiViewRender(projectId:string,configuration:ModelConfiguration){
   const exported=await queueExport(projectId,configuration);
@@ -25,6 +27,13 @@ export async function requestDesignSuggestions(projectId:string,configuration:Mo
 
 export async function runManufacturingCheck(projectId:string,configuration:ModelConfiguration){
   return request<ManufacturingCheckResult>(`${root()}/projects/${projectId}/manufacturability/check`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({configurationJson:configuration})});
+}
+
+export async function runVisionManufacturingReview(projectId:string,configuration:ModelConfiguration){
+  const deterministic=await runManufacturingCheck(projectId,configuration);
+  const renderJobId=await createMultiViewRender(projectId,configuration);
+  const vision=await request<ManufacturingVisionResult>(`${root()}/projects/${projectId}/manufacturability/vision-review`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({manufacturingCheckId:deterministic.id,renderJobId})});
+  return{check:deterministic,vision};
 }
 
 export async function runGeometryManufacturingCheck(projectId:string,configuration:ModelConfiguration){
