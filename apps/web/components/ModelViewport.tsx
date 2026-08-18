@@ -3,6 +3,7 @@
 import {Suspense,useCallback,useEffect,useMemo,useRef} from 'react';
 import {Canvas,useFrame,useThree} from '@react-three/fiber';
 import {Bounds,GizmoHelper,GizmoViewport,Grid,Html,OrbitControls,TransformControls,useGLTF} from '@react-three/drei';
+import {findVariantPlacementAnchor,resolveVariantAnchorTransform} from '@product3d/compatibility-engine';
 import {analyzeTriangleTopology,type TriangleRegion} from '@product3d/geometry-topology';
 import type {EditorAction} from '@product3d/action-engine';
 import type {AnchorDefinition,ComponentManifest,ModelConfiguration,ModelManifest,TransformState} from '@product3d/model-schema';
@@ -199,7 +200,29 @@ function LoadedModel({url,loadStartedAt}:{url:string;loadStartedAt:number}){
     if(!configuration||!manifest)return;
     prepared.scene.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const id=object.userData.__componentId as string|undefined;if(!id)return;const state=configuration.components[id];if(!state)return;const baseScale=object.userData.__baseScale as number[],basePosition=object.userData.__basePosition as number[],baseRotation=object.userData.__baseRotation as number[];object.scale.set(baseScale[0]*state.dimensionsMm.width/state.originalDimensionsMm.width,baseScale[1]*state.dimensionsMm.height/state.originalDimensionsMm.height,baseScale[2]*state.dimensionsMm.depth/state.originalDimensionsMm.depth);object.position.set(basePosition[0]+state.transform.position[0]/1000,basePosition[1]+state.transform.position[1]/1000,basePosition[2]+state.transform.position[2]/1000);object.rotation.set(baseRotation[0]+state.transform.rotation[0],baseRotation[1]+state.transform.rotation[1],baseRotation[2]+state.transform.rotation[2]);object.visible=state.visible&&!state.deleted&&!state.variantId;const preset=state.materialId?demoMaterials.find(item=>item.id===state.materialId):undefined,materials:THREE.Material[]=Array.isArray(object.material)?object.material:[object.material],bases=object.userData.__baseMaterials as BaseMaterialState[];for(const[index,material]of materials.entries()){if(!(material instanceof THREE.MeshStandardMaterial))continue;const base=bases?.[index];if(base){material.color.set(`#${base.color}`);material.roughness=base.roughness;material.metalness=base.metalness;}if(preset?.baseColor)material.color.set(preset.baseColor);if(preset){material.roughness=preset.roughness;material.metalness=preset.metalness;}if(state.color)material.color.set(state.color);}});
   },[configuration,manifest,prepared.scene]);
-  useEffect(()=>{let cancelled=false;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];if(!configuration)return()=>{cancelled=true;};const tasks=Object.entries(configuration.components).filter(([,state])=>Boolean(state.variantId)&&state.visible&&!state.deleted).map(async([id,state])=>{const variant=state.variantId?variants[state.variantId]:undefined;if(!variant)return;let sourceObject:THREE.Object3D|undefined;prepared.scene.traverse(object=>{if(object.userData.__componentId===id)sourceObject=object;});if(!sourceObject?.parent)return;const instance=await variantScene(variant.signedUrl);if(cancelled){disposeObject3D(instance);return;}instance.name=`Variant ${variant.name}`;instance.traverse(object=>{object.userData.__componentId=id;});sourceObject.parent.add(instance);instance.position.copy(sourceObject.position);instance.rotation.copy(sourceObject.rotation);const box=new THREE.Box3().setFromObject(instance),size=new THREE.Vector3();box.getSize(size);if(variant.dimensionPolicy==='AUTO_FIT'&&size.x>0&&size.y>0&&size.z>0)instance.scale.set(state.dimensionsMm.width/1000/size.x*state.transform.scale[0],state.dimensionsMm.height/1000/size.y*state.transform.scale[1],state.dimensionsMm.depth/1000/size.z*state.transform.scale[2]);variantInstances.current.push(instance);highlight(instance,useEditorStore.getState().selected);});void Promise.all(tasks).then(()=>{if(!cancelled)requestAnimationFrame(publishMeasurements);});return()=>{cancelled=true;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];};},[configuration,variants,prepared.scene,publishMeasurements]);
+  useEffect(()=>{
+    let cancelled=false;
+    for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}
+    variantInstances.current=[];
+    if(!configuration||!manifest)return()=>{cancelled=true;};
+    const tasks=Object.entries(configuration.components).filter(([,state])=>Boolean(state.variantId)&&state.visible&&!state.deleted).map(async([id,state])=>{
+      const variant=state.variantId?variants[state.variantId]:undefined;if(!variant)return;
+      const definition=manifest.components.find(item=>item.id===id);if(!definition)return;
+      let sourceObject:THREE.Object3D|undefined;prepared.scene.traverse(object=>{if(object.userData.__componentId===id)sourceObject=object;});if(!sourceObject?.parent)return;
+      const instance=await variantScene(variant.signedUrl);if(cancelled){disposeObject3D(instance);return;}
+      const anchor=findVariantPlacementAnchor(definition,variant,manifest.anchors??[]);
+      if((variant.anchorType||'BOUNDS_CENTER').trim().toUpperCase()!=='BOUNDS_CENTER'&&!anchor){disposeObject3D(instance);useEditorStore.setState({error:`Variant ${variant.name} requires ${variant.anchorType} on ${definition.name}. Review the Manifest anchor before replacing this component.`});return;}
+      const size=new THREE.Vector3();new THREE.Box3().setFromObject(instance).getSize(size);
+      instance.name=`Variant ${variant.name}`;instance.traverse(object=>{object.userData.__componentId=id;});
+      sourceObject.parent.add(instance);
+      const placement=resolveVariantAnchorTransform({translation:sourceObject.position.toArray() as[number,number,number],rotation:sourceObject.quaternion.toArray() as[number,number,number,number],scale:sourceObject.scale.toArray() as[number,number,number],anchor});
+      instance.position.fromArray(placement.translation);instance.quaternion.fromArray(placement.rotation);
+      if(variant.dimensionPolicy==='AUTO_FIT'&&size.x>0&&size.y>0&&size.z>0)instance.scale.set(state.dimensionsMm.width/1000/size.x*state.transform.scale[0],state.dimensionsMm.height/1000/size.y*state.transform.scale[1],state.dimensionsMm.depth/1000/size.z*state.transform.scale[2]);
+      variantInstances.current.push(instance);highlight(instance,useEditorStore.getState().selected);
+    });
+    void Promise.all(tasks).then(()=>{if(!cancelled)requestAnimationFrame(publishMeasurements);});
+    return()=>{cancelled=true;for(const item of variantInstances.current){item.removeFromParent();disposeObject3D(item);}variantInstances.current=[];};
+  },[configuration,manifest,variants,prepared.scene,publishMeasurements]);
   useEffect(()=>{highlight(prepared.scene,selected);for(const instance of variantInstances.current)highlight(instance,selected);},[prepared.scene,selected]);
   useEffect(()=>{if(!groupRef.current||!configuration)return;const transform=configuration.placement.transform;groupRef.current.position.fromArray(transform.position);groupRef.current.rotation.set(...transform.rotation);groupRef.current.scale.fromArray(transform.scale);},[configuration?.placement.transform]);
   useEffect(()=>{const frame=requestAnimationFrame(publishMeasurements);return()=>cancelAnimationFrame(frame);},[configuration,selected,publishMeasurements]);
