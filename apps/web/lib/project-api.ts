@@ -12,7 +12,7 @@ const root=()=>`${(process.env.NEXT_PUBLIC_API_URL??'http://localhost:4000').rep
 async function json<T>(response:Response):Promise<T>{if(!response.ok)throw new Error(await response.text());return response.json() as Promise<T>;}
 async function request<T>(input:RequestInfo|URL,init?:RequestInit):Promise<T>{return json<T>(await authFetch(input,init));}
 
-export type ExportFormat='GLB'|'OBJ'|'STL';
+export type ExportFormat='GLB'|'GLTF'|'FBX'|'USDZ'|'OBJ'|'STL';
 export type ProjectSummary={id:string;name:string;modelAssetId:string;updatedAt:string;modelAsset:{id:string;name:string;status:string};versions:Array<{id:string;name:string;createdAt:string}>};
 export type ProjectVersion={id:string;name:string;configurationJson:unknown;createdAt:string};
 export const listProjects=()=>request<ProjectSummary[]>(`${root()}/projects`);
