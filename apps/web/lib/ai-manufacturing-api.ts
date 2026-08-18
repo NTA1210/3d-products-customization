@@ -12,6 +12,8 @@ export type ManufacturingIssue={id:string;ruleId:string;severity:'INFO'|'WARNING
 export type ManufacturingCheckResult={id:string;status:string;issues:ManufacturingIssue[];geometryJson?:Record<string,unknown>|null};
 export type ManufacturingVisionExplanation={issueId:string;explanation:string;impact:string;suggestedNextStep:string};
 export type ManufacturingVisionResult={id:string;manufacturingCheckId:string;renderJobId:string;summary:string;visualObservations:string[];explanations:ManufacturingVisionExplanation[];authoritativeSource:'RULE_AND_GEOMETRY'};
+export type VisualizationConsistencyObservation={category:'SHAPE'|'COMPONENT_STRUCTURE'|'MATERIAL_COLOR'|'OCCLUSION';severity:'INFO'|'WARNING';message:string};
+export type VisualizationConsistencyResult={id:string;summary:string;shapeScore:number;componentScore:number;materialColorScore:number;overallScore:number;status:'PASS'|'REVIEW';observations:VisualizationConsistencyObservation[];thresholds:{shape:number;component:number;materialColor:number;overall:number};authority:'SOURCE_RENDER'};
 
 export async function createMultiViewRender(projectId:string,configuration:ModelConfiguration){
   const exported=await queueExport(projectId,configuration);
@@ -50,5 +52,10 @@ export async function createLifestyleVisualization(projectId:string,configuratio
   const queued=await request<{id:string;jobId:string;status:string}>(`${root()}/projects/${projectId}/ai/visualizations`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({renderJobId,prompt})});
   await waitForJob(queued.jobId);
   const artifact=await getJobArtifact(queued.jobId);
-  return{id:queued.id,url:artifact.url,filename:artifact.filename};
+  try{
+    const review=await request<VisualizationConsistencyResult>(`${root()}/projects/${projectId}/ai/visualization-consistency`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({renderJobId,generatedJobId:queued.jobId})});
+    return{id:queued.id,url:artifact.url,filename:artifact.filename,review};
+  }catch(error){
+    return{id:queued.id,url:artifact.url,filename:artifact.filename,reviewError:error instanceof Error?error.message:'Consistency review unavailable.'};
+  }
 }

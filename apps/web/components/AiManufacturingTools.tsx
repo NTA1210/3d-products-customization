@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {createLifestyleVisualization,createMultiViewRender,requestDesignSuggestions,runGeometryManufacturingCheck,runManufacturingCheck,runVisionManufacturingReview,type AiDesignResult,type ManufacturingIssue,type ManufacturingVisionResult} from '../lib/ai-manufacturing-api';
+import {createLifestyleVisualization,createMultiViewRender,requestDesignSuggestions,runGeometryManufacturingCheck,runManufacturingCheck,runVisionManufacturingReview,type AiDesignResult,type ManufacturingIssue,type ManufacturingVisionResult,type VisualizationConsistencyResult} from '../lib/ai-manufacturing-api';
 import {useEditorStore} from '../lib/store';
 
 type Busy='ai'|'visualization'|'manufacturing'|'geometry'|'vision';
@@ -13,17 +13,14 @@ export default function AiManufacturingTools(){
   const[geometry,setGeometry]=useState<Record<string,unknown>>();
   const[vision,setVision]=useState<ManufacturingVisionResult>();
   const[visualizationUrl,setVisualizationUrl]=useState<string>();
+  const[visualizationReview,setVisualizationReview]=useState<VisualizationConsistencyResult>();
+  const[visualizationReviewError,setVisualizationReviewError]=useState<string>();
   const[busy,setBusy]=useState<Busy>();
   const ready=Boolean(store.projectId&&store.configuration?.placement.locked);
 
   useEffect(()=>{
-    setInstructions('');
-    setAi(undefined);
-    setIssues([]);
-    setGeometry(undefined);
-    setVision(undefined);
-    setVisualizationUrl(undefined);
-    setBusy(undefined);
+    setInstructions('');setAi(undefined);setIssues([]);setGeometry(undefined);setVision(undefined);
+    setVisualizationUrl(undefined);setVisualizationReview(undefined);setVisualizationReviewError(undefined);setBusy(undefined);
   },[store.assetId,store.projectId]);
 
   const fail=(error:unknown,fallback:string)=>useEditorStore.setState({error:error instanceof Error?error.message:fallback});
@@ -35,8 +32,8 @@ export default function AiManufacturingTools(){
   };
   const visualize=async()=>{
     if(!store.projectId||!store.configuration||!instructions.trim())return;
-    setBusy('visualization');
-    try{const result=await createLifestyleVisualization(store.projectId,store.configuration,instructions.trim());setVisualizationUrl(result.url);}
+    setBusy('visualization');setVisualizationReview(undefined);setVisualizationReviewError(undefined);
+    try{const result=await createLifestyleVisualization(store.projectId,store.configuration,instructions.trim());setVisualizationUrl(result.url);setVisualizationReview(result.review);setVisualizationReviewError(result.reviewError);}
     catch(error){fail(error,'AI visualization failed.');}finally{setBusy(undefined);}
   };
   const check=async()=>{
@@ -63,7 +60,7 @@ export default function AiManufacturingTools(){
     <textarea rows={3} placeholder="Design goals or lifestyle visualization instructions…" value={instructions} onChange={e=>setInstructions(e.target.value)}/>
     <div className="row">
       <button disabled={!ready||Boolean(busy)} onClick={()=>void suggest()}>{busy==='ai'?'Rendering + analyzing…':'AI Suggest'}</button>
-      <button disabled={!ready||Boolean(busy)||!instructions.trim()} onClick={()=>void visualize()}>{busy==='visualization'?'Generating…':'Lifestyle Visual'}</button>
+      <button disabled={!ready||Boolean(busy)||!instructions.trim()} onClick={()=>void visualize()}>{busy==='visualization'?'Generating + checking…':'Lifestyle Visual'}</button>
     </div>
     <div className="row">
       <button disabled={!ready||Boolean(busy)} onClick={()=>void check()}>{busy==='manufacturing'?'Checking…':'Rule Check'}</button>
@@ -73,6 +70,8 @@ export default function AiManufacturingTools(){
     <p className="hint">Rule/Geometry là nguồn kết luận chính. Vision review dùng multi-view hiện tại để giải thích issue và nêu visual observations cần người kiểm tra.</p>
     {!store.projectId&&<p className="hint">Create a project before AI/manufacturing tools.</p>}
     {visualizationUrl&&<div><img src={visualizationUrl} alt="AI lifestyle visualization" style={{width:'100%',height:'auto',borderRadius:8}}/><a href={visualizationUrl} target="_blank" rel="noreferrer">Open visualization</a></div>}
+    {visualizationReview&&<div className={visualizationReview.status==='PASS'?'warning':'error'} data-testid="visualization-consistency-review"><strong>{visualizationReview.status==='PASS'?'Identity preserved':'Identity review needed'} · {Math.round(visualizationReview.overallScore*100)}%</strong><p>{visualizationReview.summary}</p><div className="source-id">Shape {Math.round(visualizationReview.shapeScore*100)} · Components {Math.round(visualizationReview.componentScore*100)} · Material/Color {Math.round(visualizationReview.materialColorScore*100)}</div>{visualizationReview.observations.length?<ul>{visualizationReview.observations.map((item,index)=><li key={`${index}-${item.category}`}>{item.category}: {item.message}</li>)}</ul>:null}<p className="hint">Authority: current source render. Background, lighting and camera differences are ignored.</p></div>}
+    {visualizationReviewError&&<div className="warning" data-testid="visualization-consistency-unavailable"><strong>Generated image available · consistency not certified</strong><p>{visualizationReviewError}</p></div>}
     {ai&&<div><p className="hint">{ai.summary}</p>{ai.suggestions.map(s=><div className={`warning ${s.valid?'':'error'}`} key={s.id}><strong>{s.title}</strong><p>{s.reason}</p>{s.requestedStyleIds?.length?<small>Style: {s.requestedStyleIds.join(', ')}</small>:null}{!s.valid&&<small>{s.validationErrors.join(' · ')}</small>}<button disabled={!s.valid} onClick={()=>store.dispatchBatch(s.actions,`AI: ${s.title}`)}>Apply suggestion</button></div>)}</div>}
     {geometry&&<div className="warning"><strong>Geometry facts</strong><pre className="source-id" style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(geometry,null,2)}</pre></div>}
     {vision&&<div className="warning" data-testid="manufacturing-vision-review"><strong>Vision review · advisory</strong><p>{vision.summary}</p>{vision.visualObservations.length?<><small>Visual observations</small><ul>{vision.visualObservations.map((item,index)=><li key={`${index}-${item}`}>{item}</li>)}</ul></>:null}<div className="source-id">Authority: {vision.authoritativeSource}</div></div>}

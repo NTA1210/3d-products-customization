@@ -2,6 +2,7 @@ import {Controller,Get,Module} from '@nestjs/common';
 import {ColorPresetSchema,MaterialPresetSchema} from '@product3d/model-schema';
 import {AiController} from './ai/ai.controller';
 import {AiProviderService} from './ai/ai-provider.service';
+import {VisualizationConsistencyController} from './ai/visualization-consistency.controller';
 import {AssetController} from './assets/asset.controller';
 import {AuthController} from './auth/auth.controller';
 import {SupabaseAuthGuard} from './auth/auth.service';
@@ -38,7 +39,7 @@ class SurfaceCatalogController{
 }
 
 @Module({
-  controllers:[HealthController,AuthController,AssetController,CatalogController,CollectionController,JobController,ProjectController,SurfaceCatalogController,RenderController,AiController,ManufacturingController,WorkshopController,MetricsController],
+  controllers:[HealthController,AuthController,AssetController,CatalogController,CollectionController,JobController,ProjectController,SurfaceCatalogController,RenderController,AiController,VisualizationConsistencyController,ManufacturingController,WorkshopController,MetricsController],
   providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,GeometryQueueService,AiVisualizationQueueService,SupabaseAuthGuard,AiProviderService,MetricsService],
 })
 export class AppModule{}
