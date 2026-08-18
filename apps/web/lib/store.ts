@@ -20,6 +20,7 @@ import {demoMaterials,replaceRuntimeMaterials} from './materials';
 import {useSnapInteractionStore} from './snap-store';
 import type {RuntimeVariant} from './catalog-api';
 import {resetProductConfiguration} from './configuration-presets';
+import {expandManualStyleSyncAction} from './component-style-sync';
 
 type Phase='EMPTY'|'PREPARE'|'EDITOR';
 type TransformMode='translate'|'rotate'|'scale';
@@ -201,9 +202,16 @@ export const useEditorStore=create<EditorStore>((set,get)=>({
     const state=get();
     if(!state.manifest||!state.configuration)return false;
     const before=structuredClone(state.configuration);
-    const result=applyAction(action,state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)});
-    if(!result.ok){set({error:result.message});return false;}
-    set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label:label??action.type}],redoStack:[],error:undefined});
+    const linkedActions=expandManualStyleSyncAction(action,state.manifest);
+    const result=linkedActions.length===1
+      ?applyAction(linkedActions[0],state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)})
+      :applyActions(linkedActions,state.manifest,state.configuration,{materials:state.materials,variants:Object.values(state.variants)});
+    if(!result.ok){
+      set({error:linkedActions.length>1?`Linked appearance sync failed: ${result.message}`:result.message});
+      return false;
+    }
+    const historyLabel=linkedActions.length>1?`${label??action.type} · linked ${linkedActions.length} components`:(label??action.type);
+    set({configuration:result.configuration,undoStack:[...state.undoStack,{configuration:before,label:historyLabel}],redoStack:[],error:undefined});
     return true;
   },
   dispatchBatch:(actions,label)=>{
