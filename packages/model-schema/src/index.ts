@@ -133,6 +133,13 @@ export const MaterialPresetSchema = z.object({
 });
 export type MaterialPreset = z.infer<typeof MaterialPresetSchema>;
 
+export const ColorPresetSchema=z.object({
+  id:z.string(),name:z.string(),hex:z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  styleTags:z.array(z.string()).default([]),
+  compatibleMaterialCategories:z.array(MaterialCategory).default([]),
+});
+export type ColorPreset=z.infer<typeof ColorPresetSchema>;
+
 export const ComponentVariantSchema = z.object({
   id:z.string(), groupId:z.string(), name:z.string(), role:ComponentRole, assetUrl:z.string(), anchorType:z.string(),
   compatibleModelTags:z.array(z.string()).default([]), compatibleComponentRoles:z.array(ComponentRole).default([]),
