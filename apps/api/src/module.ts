@@ -1,4 +1,5 @@
 import {Controller,Get,Module} from '@nestjs/common';
+import {ColorPresetSchema,MaterialPresetSchema} from '@product3d/model-schema';
 import {AiController} from './ai/ai.controller';
 import {AiProviderService} from './ai/ai-provider.service';
 import {AssetController} from './assets/asset.controller';
@@ -23,14 +24,21 @@ import {WorkshopController} from './workshop/workshop.controller';
 @Controller('health')
 class HealthController{@Get()health(){return{ok:true,service:'product3d-api'}}}
 
-@Controller('materials')
-class MaterialController{
+@Controller()
+class SurfaceCatalogController{
   constructor(private readonly db:PrismaService){}
-  @Get()all(){return this.db.materialPreset.findMany({where:{active:true}})}
+  @Get('materials') async materials(){
+    const rows=await this.db.materialPreset.findMany({where:{active:true},orderBy:{name:'asc'}});
+    return rows.map(row=>MaterialPresetSchema.parse({id:row.id,name:row.name,category:row.category,...(row.propertiesJson as object),styleTags:row.styleTags}));
+  }
+  @Get('colors') async colors(){
+    const rows=await this.db.colorPreset.findMany({where:{active:true},orderBy:{name:'asc'}});
+    return rows.map(row=>ColorPresetSchema.parse({id:row.id,name:row.name,hex:row.hex,styleTags:row.styleTags,compatibleMaterialCategories:row.compatibleMaterialCategories}));
+  }
 }
 
 @Module({
-  controllers:[HealthController,AuthController,AssetController,CatalogController,CollectionController,JobController,ProjectController,MaterialController,RenderController,AiController,ManufacturingController,WorkshopController,MetricsController],
+  controllers:[HealthController,AuthController,AssetController,CatalogController,CollectionController,JobController,ProjectController,SurfaceCatalogController,RenderController,AiController,ManufacturingController,WorkshopController,MetricsController],
   providers:[PrismaService,StorageService,AssetQueueService,ExportQueueService,RenderQueueService,GeometryQueueService,AiVisualizationQueueService,SupabaseAuthGuard,AiProviderService,MetricsService],
 })
 export class AppModule{}
