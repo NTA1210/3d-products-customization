@@ -21,6 +21,8 @@ export default function StyleVariantTools(){
     void Promise.all([getStyles(),getMaterials(),getColors()]).then(([styleRows,materialRows,colorRows])=>{
       if(cancelled)return;
       setStyles(styleRows);setMaterials(materialRows);setColors(colorRows);
+      const current=useEditorStore.getState().configuration;
+      if(current)useEditorStore.setState({configuration:structuredClone(current)});
     }).catch(error=>{if(!cancelled)useEditorStore.setState({error:error instanceof Error?error.message:'Could not load surface catalogs.'});});
     return()=>{cancelled=true;};
   },[setMaterials]);
