@@ -13,11 +13,24 @@ export const ManufacturingVisionResponseSchema=z.object({
 });
 export type ManufacturingVisionResponse=z.infer<typeof ManufacturingVisionResponseSchema>;
 
+export const CollectionExplanationResponseSchema=z.object({
+  summary:z.string().min(1),
+  explanations:z.array(z.object({productId:z.string().min(1),explanation:z.string().min(1)})).max(20),
+});
+export type CollectionExplanationResponse=z.infer<typeof CollectionExplanationResponseSchema>;
+
 const MANUFACTURING_VISION_JSON_SCHEMA={
   type:'object',additionalProperties:false,required:['summary','visualObservations','explanations'],properties:{
     summary:{type:'string'},
     visualObservations:{type:'array',maxItems:12,items:{type:'string'}},
     explanations:{type:'array',maxItems:50,items:{type:'object',additionalProperties:false,required:['issueId','explanation','impact','suggestedNextStep'],properties:{issueId:{type:'string'},explanation:{type:'string'},impact:{type:'string'},suggestedNextStep:{type:'string'}}}},
+  },
+} as const;
+
+const COLLECTION_EXPLANATION_JSON_SCHEMA={
+  type:'object',additionalProperties:false,required:['summary','explanations'],properties:{
+    summary:{type:'string'},
+    explanations:{type:'array',maxItems:20,items:{type:'object',additionalProperties:false,required:['productId','explanation'],properties:{productId:{type:'string'},explanation:{type:'string'}}}},
   },
 } as const;
 
@@ -52,5 +65,9 @@ export class AiProviderService{
 
   async manufacturingVision(input:VisionProviderInput):Promise<AiProviderResult>{
     return this.structured(input,{model:process.env.OPENAI_MANUFACTURING_MODEL??process.env.OPENAI_DESIGN_MODEL??'gpt-5-mini',schema:MANUFACTURING_VISION_JSON_SCHEMA,schemaName:'manufacturing_vision_review',event:'manufacturing_vision_request',parse:value=>ManufacturingVisionResponseSchema.parse(value)});
+  }
+
+  async collectionExplanation(input:VisionProviderInput):Promise<AiProviderResult>{
+    return this.structured(input,{model:process.env.OPENAI_COLLECTION_MODEL??process.env.OPENAI_DESIGN_MODEL??'gpt-5-mini',schema:COLLECTION_EXPLANATION_JSON_SCHEMA,schemaName:'collection_recommendation_explanation',event:'collection_explanation_request',parse:value=>CollectionExplanationResponseSchema.parse(value)});
   }
 }
