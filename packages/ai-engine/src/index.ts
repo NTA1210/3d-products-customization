@@ -2,28 +2,50 @@ import {z} from 'zod';
 import {EditorActionSchema,type EditorAction} from '@product3d/action-engine';
 import {applyActions} from '@product3d/editor-core';
 import type {ComponentVariant,MaterialPreset,ModelConfiguration,ModelManifest} from '@product3d/model-schema';
+import {compilePresetRules,PresetRuleSetSchema} from '@product3d/preset-engine';
 
-const AiActionSchema=EditorActionSchema.refine(action=>action.source==='AI',{message:'AI suggestions must use source=AI'});
-export const AiSuggestionSchema=z.object({id:z.string().min(1),title:z.string().min(1),reason:z.string().min(1),actions:z.array(AiActionSchema).min(1).max(20)});
+const AiEditorActionSchema=EditorActionSchema.refine(action=>action.source==='AI',{message:'AI suggestions must use source=AI'});
+const AiStyleActionSchema=z.object({type:z.literal('APPLY_STYLE'),styleId:z.string().min(1),source:z.literal('AI')});
+const AiProposalActionSchema=z.union([AiEditorActionSchema,AiStyleActionSchema]);
+export type AiProposalAction=z.infer<typeof AiProposalActionSchema>;
+export const AiSuggestionSchema=z.object({id:z.string().min(1),title:z.string().min(1),reason:z.string().min(1),actions:z.array(AiProposalActionSchema).min(1).max(20)});
 export const AiDesignResponseSchema=z.object({summary:z.string().min(1),suggestions:z.array(AiSuggestionSchema).max(12)});
 export type AiDesignResponse=z.infer<typeof AiDesignResponseSchema>;
 
 export type AiCatalog={materialIds:Set<string>;variantIds:Set<string>;styleIds:Set<string>;componentIds:Set<string>};
+export type AiStyleRecord={id:string;rulesJson:unknown};
 
-export function validateAiDesignResponse(input:{response:unknown;manifest:ModelManifest;configuration:ModelConfiguration;catalog:AiCatalog;materials?:MaterialPreset[];variants?:ComponentVariant[]}){
+export function validateAiDesignResponse(input:{response:unknown;manifest:ModelManifest;configuration:ModelConfiguration;catalog:AiCatalog;materials?:MaterialPreset[];variants?:ComponentVariant[];styles?:AiStyleRecord[]}){
   const parsed=AiDesignResponseSchema.parse(input.response);
+  const styles=new Map((input.styles??[]).map(style=>[style.id,style]));
   const suggestions=parsed.suggestions.map(suggestion=>{
-    const errors:string[]=[];
-    for(const action of suggestion.actions as EditorAction[]){
+    const errors:string[]=[],actions:EditorAction[]=[],requestedStyleIds:string[]=[];
+    for(const proposal of suggestion.actions){
+      if(proposal.type==='APPLY_STYLE'){
+        if(!input.catalog.styleIds.has(proposal.styleId)){errors.push(`Unknown styleId: ${proposal.styleId}`);continue;}
+        const style=styles.get(proposal.styleId);
+        if(!style){errors.push(`Style rules unavailable: ${proposal.styleId}`);continue;}
+        const rules=PresetRuleSetSchema.safeParse(style.rulesJson);
+        if(!rules.success){errors.push(`Invalid style rules: ${proposal.styleId}`);continue;}
+        requestedStyleIds.push(proposal.styleId);
+        const compiled=compilePresetRules(rules.data,input.manifest,'STYLE').map(action=>({...action,source:'AI' as const}));
+        if(!compiled.length){errors.push(`Style ${proposal.styleId} does not match any components.`);continue;}
+        actions.push(...compiled);
+        continue;
+      }
+      const action=proposal as EditorAction;
       if(!input.catalog.componentIds.has(action.componentId))errors.push(`Unknown componentId: ${action.componentId}`);
       if(action.type==='SET_MATERIAL'&&!input.catalog.materialIds.has(action.materialId))errors.push(`Unknown materialId: ${action.materialId}`);
       if(action.type==='REPLACE_COMPONENT'&&!input.catalog.variantIds.has(action.variantId))errors.push(`Unknown variantId: ${action.variantId}`);
+      actions.push(action);
     }
+    if(actions.length>100)errors.push('Expanded AI suggestion exceeds the 100-action safety limit.');
+    if(!actions.length&&!errors.length)errors.push('AI suggestion resolved to no editor actions.');
     if(!errors.length){
-      const applied=applyActions(suggestion.actions as EditorAction[],input.manifest,input.configuration,{materials:input.materials??[],variants:input.variants??[]});
+      const applied=applyActions(actions,input.manifest,input.configuration,{materials:input.materials??[],variants:input.variants??[]});
       if(!applied.ok)errors.push(applied.message);
     }
-    return {...suggestion,valid:errors.length===0,validationErrors:errors};
+    return{id:suggestion.id,title:suggestion.title,reason:suggestion.reason,actions,requestedStyleIds,valid:errors.length===0,validationErrors:errors};
   });
   return {summary:parsed.summary,suggestions};
 }
@@ -38,7 +60,8 @@ export const AI_DESIGN_JSON_SCHEMA={
           {type:'object',additionalProperties:false,required:['type','componentId','axis','valueMm','source'],properties:{type:{const:'SET_DIMENSION'},componentId:{type:'string'},axis:{enum:['WIDTH','HEIGHT','DEPTH']},valueMm:{type:'number',exclusiveMinimum:0},source:{const:'AI'}}},
           {type:'object',additionalProperties:false,required:['type','componentId','materialId','source'],properties:{type:{const:'SET_MATERIAL'},componentId:{type:'string'},materialId:{type:'string'},source:{const:'AI'}}},
           {type:'object',additionalProperties:false,required:['type','componentId','color','source'],properties:{type:{const:'SET_COLOR'},componentId:{type:'string'},color:{type:'string',pattern:'^#[0-9A-Fa-f]{6}$'},source:{const:'AI'}}},
-          {type:'object',additionalProperties:false,required:['type','componentId','variantId','source'],properties:{type:{const:'REPLACE_COMPONENT'},componentId:{type:'string'},variantId:{type:'string'},source:{const:'AI'}}}
+          {type:'object',additionalProperties:false,required:['type','componentId','variantId','source'],properties:{type:{const:'REPLACE_COMPONENT'},componentId:{type:'string'},variantId:{type:'string'},source:{const:'AI'}}},
+          {type:'object',additionalProperties:false,required:['type','styleId','source'],properties:{type:{const:'APPLY_STYLE'},styleId:{type:'string'},source:{const:'AI'}}}
         ]
       }}
     }}}
