@@ -62,8 +62,8 @@ function AnchorEditor(){
       <div style={{fontWeight:800,marginBottom:5}}>Style & compatibility metadata</div>
       <label>Model tags<input style={controlStyle} value={(store.manifest.modelTags??[]).join(', ')} placeholder="aircraft, premium, outdoor" onChange={event=>setModelTags(event.target.value)}/></label>
       <label>Component style tags<input style={controlStyle} value={(definition.styleTags??[]).join(', ')} placeholder="modern, minimal, structural" onChange={event=>store.patchComponentDefinition(definition.id,{styleTags:list(event.target.value)})}/></label>
-      <label>Linked appearance labels<input data-testid="component-linked-labels" style={controlStyle} value={(definition.labels??[]).join(', ')} placeholder="wing, primary" onChange={event=>store.patchComponentDefinition(definition.id,{labels:normalizeComponentLabels(list(event.target.value))})}/></label>
-      <div style={{color:'#9db0c2',marginTop:5}}>Material, Color và Variant chỉ sync khi toàn bộ label-set giống hệt nhau. So sánh không phân biệt hoa/thường hoặc thứ tự; component không có label sẽ không tự liên kết.</div>
+      <label>Linked appearance labels<input key={`${definition.id}:${(definition.labels??[]).join('|')}`} data-testid="component-linked-labels" style={controlStyle} defaultValue={(definition.labels??[]).join(', ')} placeholder="wing, primary" onBlur={event=>store.patchComponentDefinition(definition.id,{labels:normalizeComponentLabels(list(event.target.value))})}/></label>
+      <div style={{color:'#9db0c2',marginTop:5}}>Material và Color chỉ sync khi toàn bộ label-set giống hệt nhau. So sánh không phân biệt hoa/thường hoặc thứ tự; component không có label sẽ không tự liên kết.</div>
       {linked.labels.length?<div style={{marginTop:6,padding:'5px 7px',borderRadius:6,background:'#15324a'}} data-testid="linked-appearance-prepare-status"><b>{linked.linkedCount>1?`${linked.linkedCount} linked components`:'No exact-label peer yet'}</b> · {linked.labels.join(' + ')}</div>:null}
     </div>
 
@@ -132,7 +132,7 @@ function SnapStatus(){
     {linked&&linked.linkedCount>1?<div className="attachment-status" data-testid="linked-appearance-status">
       <div className="snap-status-title">Linked appearance · {linked.linkedCount} components</div>
       <div>Exact labels: <b>{linked.labels.join(' + ')}</b></div>
-      <span>Manual Material / Color / Variant edits trên component này sẽ áp dụng atomically cho toàn bộ nhóm. Move / Rotate / Resize không bị liên kết.</span>
+      <span>Manual Material / Color edits trên component này sẽ áp dụng atomically cho toàn bộ nhóm. Move / Rotate / Resize / Variant vẫn độc lập.</span>
     </div>:null}
     {snap.attachMode&&!snap.candidate&&<div className="snap-nearest" data-testid="attach-mode-armed">
       <div className="snap-status-title">Attach mode armed</div>
