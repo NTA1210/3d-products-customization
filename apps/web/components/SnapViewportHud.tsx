@@ -1,6 +1,7 @@
 'use client';
 
 import type {AnchorDefinition,AnchorStatus} from '@product3d/model-schema';
+import {linkedAppearanceSummary,normalizeComponentLabels} from '../lib/component-style-sync';
 import {useEditorStore} from '../lib/store';
 import {useSnapInteractionStore} from '../lib/snap-store';
 
@@ -41,6 +42,7 @@ function AnchorEditor(){
   const definition=store.manifest?.components.find(item=>item.id===store.selected);
   if(!definition||!store.manifest)return null;
   const anchors=(store.manifest.anchors??[]).filter(anchor=>anchor.componentId===definition.id);
+  const linked=linkedAppearanceSummary(store.manifest,definition.id);
   const positionAxes=definition.positionEditableAxes??allAxes;
   const rotationAxes=definition.rotationEditableAxes??allAxes;
   const setTransformAxis=(kind:'position'|'rotation',axis:'x'|'y'|'z',checked:boolean)=>{
@@ -54,12 +56,15 @@ function AnchorEditor(){
   };
   return <div style={{...panelStyle,top:126,right:356,maxHeight:'calc(100vh - 178px)',overflow:'auto'}} data-testid="anchor-editor-hud">
     <div style={{fontWeight:800,marginBottom:3}}>Component Setup · {definition.name}</div>
-    <div style={{color:'#9db0c2',marginBottom:8}}>Transform permission, style metadata và semantic anchor đều thuộc Manifest. Model tags được dùng cho variant compatibility; component style tags được dùng cho style/catalog matching.</div>
+    <div style={{color:'#9db0c2',marginBottom:8}}>Transform permission, style metadata, linked appearance labels và semantic anchor đều thuộc Manifest.</div>
 
     <div style={{borderTop:'1px solid rgba(130,157,184,.2)',borderBottom:'1px solid rgba(130,157,184,.2)',padding:'8px 0',marginBottom:8}} data-testid="manifest-style-metadata">
       <div style={{fontWeight:800,marginBottom:5}}>Style & compatibility metadata</div>
       <label>Model tags<input style={controlStyle} value={(store.manifest.modelTags??[]).join(', ')} placeholder="aircraft, premium, outdoor" onChange={event=>setModelTags(event.target.value)}/></label>
       <label>Component style tags<input style={controlStyle} value={(definition.styleTags??[]).join(', ')} placeholder="modern, minimal, structural" onChange={event=>store.patchComponentDefinition(definition.id,{styleTags:list(event.target.value)})}/></label>
+      <label>Linked appearance labels<input data-testid="component-linked-labels" style={controlStyle} value={(definition.labels??[]).join(', ')} placeholder="wing, primary" onChange={event=>store.patchComponentDefinition(definition.id,{labels:normalizeComponentLabels(list(event.target.value))})}/></label>
+      <div style={{color:'#9db0c2',marginTop:5}}>Material, Color và Variant chỉ sync khi toàn bộ label-set giống hệt nhau. So sánh không phân biệt hoa/thường hoặc thứ tự; component không có label sẽ không tự liên kết.</div>
+      {linked.labels.length?<div style={{marginTop:6,padding:'5px 7px',borderRadius:6,background:'#15324a'}} data-testid="linked-appearance-prepare-status"><b>{linked.linkedCount>1?`${linked.linkedCount} linked components`:'No exact-label peer yet'}</b> · {linked.labels.join(' + ')}</div>:null}
     </div>
 
     <div style={{borderTop:'1px solid rgba(130,157,184,.2)',borderBottom:'1px solid rgba(130,157,184,.2)',padding:'8px 0',marginBottom:8}} data-testid="transform-permission-editor">
@@ -116,13 +121,19 @@ function SnapStatus(){
   const store=useEditorStore();
   const snap=useSnapInteractionStore();
   const definition=store.manifest?.components.find(item=>item.id===store.selected);
+  const linked=store.manifest&&store.selected?linkedAppearanceSummary(store.manifest,store.selected):undefined;
   const attachment=store.selected?(store.configuration?.attachments??[]).find(item=>item.sourceComponentId===store.selected):undefined;
   const target=attachment?store.manifest?.components.find(item=>item.id===attachment.targetComponentId):undefined;
   const sourceAnchor=attachment?(store.manifest?.anchors??[]).find(item=>item.id===attachment.sourceAnchorId):undefined;
   const targetAnchor=attachment?(store.manifest?.anchors??[]).find(item=>item.id===attachment.targetAnchorId):undefined;
-  if(!snap.candidate&&!attachment&&!snap.groundBarrier&&!snap.attachMode)return null;
+  if(!snap.candidate&&!attachment&&!snap.groundBarrier&&!snap.attachMode&&!(linked&&linked.linkedCount>1))return null;
   const readyTitle=snap.attachMode?'Ready to attach':'Snap preview';
   return <div className="snap-status-card" data-testid="snap-status-hud">
+    {linked&&linked.linkedCount>1?<div className="attachment-status" data-testid="linked-appearance-status">
+      <div className="snap-status-title">Linked appearance · {linked.linkedCount} components</div>
+      <div>Exact labels: <b>{linked.labels.join(' + ')}</b></div>
+      <span>Manual Material / Color / Variant edits trên component này sẽ áp dụng atomically cho toàn bộ nhóm. Move / Rotate / Resize không bị liên kết.</span>
+    </div>:null}
     {snap.attachMode&&!snap.candidate&&<div className="snap-nearest" data-testid="attach-mode-armed">
       <div className="snap-status-title">Attach mode armed</div>
       <div>Move {definition?.name??'the selected part'} gần một compatible anchor. Thả chuột khi preview chuyển sang Ready to attach.</div>
